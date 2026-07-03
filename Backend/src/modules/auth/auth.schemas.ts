@@ -10,6 +10,12 @@ export const VerifyTotpLoginSchema = z.object({
   code: z.string().length(6, "TOTP code must be 6 digits"),
 });
 
+export const EnrollTotpSchema = z.object({
+  // Required only when the account already has TOTP enabled — proves the
+  // caller still controls the existing factor before we replace it.
+  currentCode: z.string().length(6).optional(),
+});
+
 export const EnrollTotpConfirmSchema = z.object({
   code: z.string().length(6, "TOTP code must be 6 digits"),
 });

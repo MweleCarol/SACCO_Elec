@@ -31,7 +31,8 @@ export function buildAuthController(prisma: PrismaClient) {
 
     async enrollTotp(req: Request, res: Response) {
       if (!req.user) throw new AuthenticationError();
-      const result = await authService.startTotpEnrollment(prisma, req.user.userId);
+      const { currentCode } = res.locals.validated;
+      const result = await authService.startTotpEnrollment(prisma, req.user.userId, currentCode);
       res.status(200).json({ data: result });
     },
 

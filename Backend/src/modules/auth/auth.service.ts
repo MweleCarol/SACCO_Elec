@@ -121,9 +121,22 @@ export async function logout(prisma: PrismaClient, refreshToken: string): Promis
   });
 }
 
-export async function startTotpEnrollment(prisma: PrismaClient, userId: string) {
-  const user = await prisma.user.findUnique({ where: { id: userId } });
+export async function startTotpEnrollment(prisma: PrismaClient, userId: string, currentCode?: string) {
+  const user = await prisma.user.findUnique({ where: { id: userId }, include: { totpSecret: true } });
   if (!user) throw new NotFoundError("User");
+
+  // If TOTP is already enabled, a bare access token is not enough to replace
+  // it — an access token can be stolen (XSS, log leakage, etc.), and letting
+  // it silently overwrite an enrolled MFA factor would let an attacker plant
+  // their own secret and lock the real owner out permanently. Require proof
+  // of the *current* factor first.
+  if (user.totpSecret?.enabled) {
+    if (!currentCode) {
+      throw new AuthenticationError("Current TOTP code is required to replace an existing enrollment");
+    }
+    const stillValid = await verifyTotpCode(user.totpSecret.secret, currentCode);
+    if (!stillValid) throw new AuthenticationError("Invalid TOTP code");
+  }
 
   const { secret, otpauthUri } = generateTotpEnrollment(user.email);
 
