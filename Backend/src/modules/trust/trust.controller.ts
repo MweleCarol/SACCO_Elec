@@ -1,7 +1,8 @@
 import type { Request, Response } from "express";
 import type { PrismaClient } from "@prisma/client";
 import { proposeAction, submitApproval } from "./trust.service.js";
-import { NotFoundError, ValidationError } from "@shared/errors.js";
+import { NotFoundError, ValidationError, AuthenticationError } from "@shared/errors.js";
+import { verifyTotpCode } from "@modules/auth/totp.service.js";
 
 // Express 5's ParamsDictionary types values as `string | string[]` (to allow
 // repeated route params); our routes never repeat a param name, so this
@@ -9,6 +10,21 @@ import { NotFoundError, ValidationError } from "@shared/errors.js";
 function paramId(value: string | string[]): string {
   if (Array.isArray(value)) throw new ValidationError("Malformed route parameter");
   return value;
+}
+
+/**
+ * Re-verifies the acting trustee's TOTP code at the moment of an
+ * approve/reject decision — a signature alone only proves possession of
+ * the private key; TOTP additionally proves the human is present and
+ * authenticated right now, matching HLD 8.2/8.5.
+ */
+async function assertLiveTotp(prisma: PrismaClient, userId: string, code: string): Promise<void> {
+  const totpSecret = await prisma.totpSecret.findUnique({ where: { userId } });
+  if (!totpSecret?.enabled) {
+    throw new AuthenticationError("TOTP must be enabled on this trustee's account to approve or reject actions");
+  }
+  const valid = await verifyTotpCode(totpSecret.secret, code);
+  if (!valid) throw new AuthenticationError("Invalid TOTP code");
 }
 
 export function buildTrustController(prisma: PrismaClient) {
@@ -38,10 +54,8 @@ export function buildTrustController(prisma: PrismaClient) {
     },
 
     async approve(req: Request, res: Response) {
-      const { signature } = res.locals.validated;
-      // NOTE: totpCode re-verification against the trustee's TotpSecret happens
-      // here once the auth module's TOTP verifier is available; omitted in
-      // this scaffold to avoid a half-implemented security check.
+      const { signature, totpCode } = res.locals.validated;
+      await assertLiveTotp(prisma, req.user!.userId, totpCode);
       const trusteeId = req.user!.trusteeId!;
       const action = await submitApproval(prisma, {
         pendingActionId: paramId(req.params.id),
@@ -53,7 +67,8 @@ export function buildTrustController(prisma: PrismaClient) {
     },
 
     async reject(req: Request, res: Response) {
-      const { signature } = res.locals.validated;
+      const { signature, totpCode } = res.locals.validated;
+      await assertLiveTotp(prisma, req.user!.userId, totpCode);
       const trusteeId = req.user!.trusteeId!;
       const action = await submitApproval(prisma, {
         pendingActionId: paramId(req.params.id),
