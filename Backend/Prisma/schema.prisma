@@ -1,0 +1,242 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+}
+
+datasource db {
+  provider = "postgresql"
+  
+}
+
+// ---------------------------------------------------------------------------
+// Core identity & membership
+// ---------------------------------------------------------------------------
+
+enum Role {
+  MEMBER
+  ELECTION_OFFICER
+  TRUSTEE_ADMIN
+  AUDITOR
+  SACCO_MANAGEMENT
+}
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  phone         String?   @unique
+  passwordHash  String
+  role          Role
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  memberProfile MemberProfile?
+  totpSecret    TotpSecret?
+  refreshTokens RefreshToken[]
+  trustee       Trustee?
+  auditLogs     AuditLog[]
+
+  @@map("users")
+}
+
+model MemberProfile {
+  id            String   @id @default(uuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  memberNumber  String   @unique
+  fullName      String
+  shareCapital  Decimal? @db.Decimal(14, 2)
+  joinedAt      DateTime @default(now())
+
+  votes         Vote[]
+
+  @@map("member_profiles")
+}
+
+model TotpSecret {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  secret    String
+  enabled   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@map("totp_secrets")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique
+  revoked   Boolean  @default(false)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@map("refresh_tokens")
+}
+
+// ---------------------------------------------------------------------------
+// Elections & voting
+// ---------------------------------------------------------------------------
+
+enum ElectionStatus {
+  DRAFT
+  SCHEDULED
+  OPEN
+  CLOSED
+  TALLIED
+  PUBLISHED
+}
+
+model Election {
+  id          String         @id @default(uuid())
+  title       String
+  description String?
+  status      ElectionStatus @default(DRAFT)
+  opensAt     DateTime
+  closesAt    DateTime
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  candidates  Candidate[]
+  votes       Vote[]
+  keyShares   KeyShare[]
+
+  @@map("elections")
+}
+
+model Candidate {
+  id          String   @id @default(uuid())
+  electionId  String
+  election    Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  fullName    String
+  statement   String?
+  createdAt   DateTime @default(now())
+
+  votes       Vote[]
+
+  @@map("candidates")
+}
+
+model Vote {
+  id              String        @id @default(uuid())
+  electionId      String
+  election        Election      @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  candidateId     String
+  candidate       Candidate     @relation(fields: [candidateId], references: [id])
+  memberProfileId String
+  memberProfile   MemberProfile @relation(fields: [memberProfileId], references: [id])
+  encryptedBallot String
+  receiptCode     String        @unique
+  castAt          DateTime      @default(now())
+
+  @@unique([electionId, memberProfileId]) // one vote per member per election
+  @@map("votes")
+}
+
+// ---------------------------------------------------------------------------
+// Distributed administrative trust (M-of-N quorum governance)
+// ---------------------------------------------------------------------------
+
+model Trustee {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  publicKey String   // PEM-encoded RSA-2048 public key
+  isActive  Boolean  @default(true)
+  joinedAt  DateTime @default(now())
+
+  proposedActions PendingAction[] @relation("ProposedBy")
+  approvals       Approval[]
+  keyShares       KeyShare[]
+
+  @@map("trustees")
+}
+
+enum ActionType {
+  CREATE_ELECTION
+  PUBLISH_ELECTION
+  FORCE_OPEN_CLOSE
+  TRIGGER_TALLY
+  PUBLISH_RESULTS
+  ADD_TRUSTEE
+  REMOVE_TRUSTEE
+  CHANGE_THRESHOLD
+}
+
+enum ActionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+  EXECUTED
+}
+
+model PendingAction {
+  id                 String        @id @default(uuid())
+  actionType         ActionType
+  payloadJson        Json
+  payloadHash        String        // canonical hash of payloadJson, signed by approvers
+  proposedByTrusteeId String
+  proposedBy         Trustee       @relation("ProposedBy", fields: [proposedByTrusteeId], references: [id])
+  status             ActionStatus  @default(PENDING)
+  threshold          Int           // M at time of proposal (snapshot, in case config changes later)
+  expiresAt          DateTime
+  createdAt          DateTime      @default(now())
+  executedAt         DateTime?
+
+  approvals          Approval[]
+
+  @@map("pending_actions")
+}
+
+enum ApprovalDecision {
+  APPROVE
+  REJECT
+}
+
+model Approval {
+  id              String           @id @default(uuid())
+  pendingActionId String
+  pendingAction   PendingAction    @relation(fields: [pendingActionId], references: [id], onDelete: Cascade)
+  trusteeId       String
+  trustee         Trustee          @relation(fields: [trusteeId], references: [id])
+  decision        ApprovalDecision
+  signature       String           // base64 RSA signature over payloadHash
+  signedAt        DateTime         @default(now())
+
+  @@unique([pendingActionId, trusteeId]) // one decision per trustee per action
+  @@map("approvals")
+}
+
+// Optional: Shamir's Secret Sharing key shares for the ballot decryption key
+model KeyShare {
+  id             String   @id @default(uuid())
+  electionId     String
+  election       Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  trusteeId      String
+  trustee        Trustee  @relation(fields: [trusteeId], references: [id])
+  encryptedShare String   // share encrypted to the trustee's public key
+  createdAt      DateTime @default(now())
+
+  @@unique([electionId, trusteeId])
+  @@map("key_shares")
+}
+
+// ---------------------------------------------------------------------------
+// Audit
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String
+  entity    String
+  entityId  String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@map("audit_logs")
+}
