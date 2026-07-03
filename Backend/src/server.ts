@@ -1,13 +1,17 @@
+import { Pool } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import { env } from "@config/env.js";
 import { logger } from "@config/logger.js";
 import { buildApp } from "./app.js";
-import { Pool } from "pg";
 
-const adapter = new PrismaPg({ connectionString: env.DATABASE_URL });
-const prisma = new PrismaClient({ adapter });
+// Prisma 7 removed the internal connection engine entirely — PrismaClient
+// must always be constructed with a driver adapter. We build our own `pg`
+// Pool here rather than handing adapter-pg a bare connection string, since
+// that's the form documented for the current adapter-pg release.
 const pool = new Pool({ connectionString: env.DATABASE_URL });
+const adapter = new PrismaPg(pool);
+const prisma = new PrismaClient({ adapter });
 
 const app = buildApp(prisma);
 
