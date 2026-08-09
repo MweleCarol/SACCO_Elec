@@ -201,7 +201,10 @@ model User {
   roleId       String     @map("role_id")
   status       UserStatus @default(PENDING_ACTIVATION)
 
-  // MFA — LLD §7.6
+  // MFA — LLD §7.6. Columns, not a separate TotpSecret table: this is a
+  // genuine 1:1 relation with no history requirement (unlike
+  // AccountActivation below, there's no legitimate reason to keep old
+  // TOTP secrets around), so a join would add cost for no benefit.
   mfaEnabled     Boolean @default(false) @map("mfa_enabled")
   totpSecret     String? @map("totp_secret") // encrypted at rest, not plaintext
   totpConfirmedAt DateTime? @map("totp_confirmed_at")
@@ -213,6 +216,7 @@ model User {
   role          Role                @relation(fields: [roleId], references: [id])
   member        MemberSync?         @relation(fields: [memberId], references: [id])
   refreshTokens RefreshToken[]
+  accountActivations AccountActivation[]
   createdElections Election[]       @relation("ElectionCreatedBy")
   requestedApprovals ApprovalRequest[] @relation("ApprovalRequestedBy")
   approvalDecisions  ApprovalDecisionRecord[]
@@ -229,8 +233,7 @@ model RefreshToken {
   id        String    @id @default(uuid())
   userId    String    @map("user_id")
   tokenHash String    @unique @map("token_hash") // never store the raw token
-  revoked   Boolean   @default(false)
-  revokedAt DateTime? @map("revoked_at")
+  revokedAt DateTime? @map("revoked_at") // null = active; non-null IS "revoked", no separate boolean needed
   expiresAt DateTime  @map("expires_at")
   createdAt DateTime  @default(now()) @map("created_at")
 
@@ -238,6 +241,26 @@ model RefreshToken {
 
   @@index([userId])
   @@map("refresh_tokens")
+}
+
+// LLD §7.2 Account Activation — not modeled anywhere else in this schema
+// originally; added once auth.repository.ts's actual needs surfaced it.
+// Multiple rows per user are expected and fine (a user can request a
+// second code if the first email was slow) — "most recent, not expired,
+// not used" is enforced at the query level (auth.repository.ts), not
+// by only ever allowing one row to exist.
+model AccountActivation {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  codeHash  String    @map("code_hash") // SHA-256 of the OTP, never the raw code
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@map("account_activations")
 }
 
 // =============================================================================

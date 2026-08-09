@@ -24,6 +24,11 @@ export const config = {
     refreshSecret: requireEnv('JWT_REFRESH_SECRET'),
     accessExpiresIn: process.env.JWT_ACCESS_EXPIRES_IN ?? '15m',
     refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN ?? '7d',
+    // Window to submit a TOTP code after password verification succeeds
+    // (login()'s MFA_REQUIRED branch). Short and deliberate: long enough
+    // to grab a phone, short enough that a leaked mfaToken doesn't stay
+    // dangerous. 5m is my suggested default — confirm or adjust.
+    mfaPendingExpiresIn: process.env.JWT_MFA_PENDING_EXPIRES_IN ?? '5m',
   },
   // Encryption config removed from here — VOTE_ENCRYPTION_KEY,
   // VOTE_SIGNING_PRIVATE_KEY, and VOTE_SIGNING_PUBLIC_KEY are read,
