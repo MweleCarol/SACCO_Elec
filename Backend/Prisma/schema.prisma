@@ -1,171 +1,64 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
 generator client {
-  provider        = "prisma-client-js"
-  previewFeatures = ["driverAdapters"]
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
 }
 
 datasource db {
   provider = "postgresql"
-  
 }
 
-// ---------------------------------------------------------------------------
-// Core identity & membership
-// ---------------------------------------------------------------------------
+// =============================================================================
+// ENUMS
+// =============================================================================
 
-enum Role {
-  MEMBER
-  ELECTION_OFFICER
-  TRUSTEE_ADMIN
-  AUDITOR
-  SACCO_MANAGEMENT
+// Account lifecycle — LLD §9.4
+enum UserStatus {
+  PENDING_ACTIVATION // created, activation OTP not yet verified
+  ACTIVE
+  SUSPENDED
+  DISABLED
 }
 
-model User {
-  id            String    @id @default(uuid())
-  email         String    @unique
-  phone         String?   @unique
-  passwordHash  String
-  role          Role
-  isActive      Boolean   @default(true)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-
-  memberProfile MemberProfile?
-  totpSecret    TotpSecret?
-  refreshTokens RefreshToken[]
-  trustee       Trustee?
-  auditLogs     AuditLog[]
-
-  @@map("users")
-}
-
-model MemberProfile {
-  id            String   @id @default(uuid())
-  userId        String   @unique
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  memberNumber  String   @unique
-  fullName      String
-  shareCapital  Decimal? @db.Decimal(14, 2)
-  joinedAt      DateTime @default(now())
-
-  votes         Vote[]
-
-  @@map("member_profiles")
-}
-
-model TotpSecret {
-  id        String   @id @default(uuid())
-  userId    String   @unique
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  secret    String
-  enabled   Boolean  @default(false)
-  createdAt DateTime @default(now())
-
-  @@map("totp_secrets")
-}
-
-model RefreshToken {
-  id        String   @id @default(uuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tokenHash String   @unique
-  revoked   Boolean  @default(false)
-  expiresAt DateTime
-  createdAt DateTime @default(now())
-
-  @@map("refresh_tokens")
-}
-
-// ---------------------------------------------------------------------------
-// Elections & voting
-// ---------------------------------------------------------------------------
-
+// Election lifecycle — LLD §10.2 (referenced), enforced via
+// VALID_ELECTION_TRANSITIONS in shared/enums
 enum ElectionStatus {
   DRAFT
+  PENDING_APPROVAL
   SCHEDULED
-  OPEN
+  ACTIVE
   CLOSED
-  TALLIED
+  RESULTS_PENDING
+  ARCHIVED
+}
+
+// LLD §10.3 "Election Type"
+enum ElectionType {
+  GENERAL
+  SPECIAL
+  BY_ELECTION
+}
+
+// LLD §10.3 "Publication Status"
+enum PublicationStatus {
+  DRAFT
   PUBLISHED
 }
 
-model Election {
-  id          String         @id @default(uuid())
-  title       String
-  description String?
-  status      ElectionStatus @default(DRAFT)
-  opensAt     DateTime
-  closesAt    DateTime
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
-
-  candidates  Candidate[]
-  votes       Vote[]
-  keyShares   KeyShare[]
-
-  @@map("elections")
+// Candidate lifecycle, distinct from approval — LLD §11.5 "Candidate Status"
+enum CandidateStatus {
+  ACTIVE
+  WITHDRAWN
+  DISQUALIFIED
 }
 
-model Candidate {
-  id          String   @id @default(uuid())
-  electionId  String
-  election    Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
-  fullName    String
-  statement   String?
-  createdAt   DateTime @default(now())
-
-  votes       Vote[]
-
-  @@map("candidates")
-}
-
-model Vote {
-  id              String        @id @default(uuid())
-  electionId      String
-  election        Election      @relation(fields: [electionId], references: [id], onDelete: Cascade)
-  candidateId     String
-  candidate       Candidate     @relation(fields: [candidateId], references: [id])
-  memberProfileId String
-  memberProfile   MemberProfile @relation(fields: [memberProfileId], references: [id])
-  encryptedBallot String
-  receiptCode     String        @unique
-  castAt          DateTime      @default(now())
-
-  @@unique([electionId, memberProfileId]) // one vote per member per election
-  @@map("votes")
-}
-
-// ---------------------------------------------------------------------------
-// Distributed administrative trust (M-of-N quorum governance)
-// ---------------------------------------------------------------------------
-
-model Trustee {
-  id        String   @id @default(uuid())
-  userId    String   @unique
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  publicKey String   // PEM-encoded RSA-2048 public key
-  isActive  Boolean  @default(true)
-  joinedAt  DateTime @default(now())
-
-  proposedActions PendingAction[] @relation("ProposedBy")
-  approvals       Approval[]
-  keyShares       KeyShare[]
-
-  @@map("trustees")
-}
-
-enum ActionType {
-  CREATE_ELECTION
-  PUBLISH_ELECTION
-  FORCE_OPEN_CLOSE
-  TRIGGER_TALLY
-  PUBLISH_RESULTS
-  ADD_TRUSTEE
-  REMOVE_TRUSTEE
-  CHANGE_THRESHOLD
-}
-
-enum ActionStatus {
+// Shared approval-state enum — used by Candidate.approvalStatus (LLD §11.5,
+// 3 of its 5 values apply) and ApprovalRequest.status (LLD §14.15, all 5)
+enum ApprovalStatus {
   PENDING
   APPROVED
   REJECTED
@@ -173,70 +66,621 @@ enum ActionStatus {
   EXECUTED
 }
 
-model PendingAction {
-  id                 String        @id @default(uuid())
-  actionType         ActionType
-  payloadJson        Json
-  payloadHash        String        // canonical hash of payloadJson, signed by approvers
-  proposedByTrusteeId String
-  proposedBy         Trustee       @relation("ProposedBy", fields: [proposedByTrusteeId], references: [id])
-  status             ActionStatus  @default(PENDING)
-  threshold          Int           // M at time of proposal (snapshot, in case config changes later)
-  expiresAt          DateTime
-  createdAt          DateTime      @default(now())
-  executedAt         DateTime?
-
-  approvals          Approval[]
-
-  @@map("pending_actions")
-}
-
+// LLD §14.6 — each approver's individual decision
 enum ApprovalDecision {
   APPROVE
   REJECT
 }
 
-model Approval {
-  id              String           @id @default(uuid())
-  pendingActionId String
-  pendingAction   PendingAction    @relation(fields: [pendingActionId], references: [id], onDelete: Cascade)
-  trusteeId       String
-  trustee         Trustee          @relation(fields: [trusteeId], references: [id])
-  decision        ApprovalDecision
-  signature       String           // base64 RSA signature over payloadHash
-  signedAt        DateTime         @default(now())
-
-  @@unique([pendingActionId, trusteeId]) // one decision per trustee per action
-  @@map("approvals")
+// LLD §14.2 — actions requiring DAT approval
+enum ApprovalActionType {
+  ELECTION_ACTIVATION
+  ELECTION_CANCELLATION
+  ELECTION_RESCHEDULING
+  CANDIDATE_APPROVAL
+  RESULTS_PUBLICATION
+  SYSTEM_CONFIGURATION_CHANGE
+  EMERGENCY_ELECTION_CLOSURE
 }
 
-// Optional: Shamir's Secret Sharing key shares for the ballot decryption key
-model KeyShare {
-  id             String   @id @default(uuid())
-  electionId     String
-  election       Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
-  trusteeId      String
-  trustee        Trustee  @relation(fields: [trusteeId], references: [id])
-  encryptedShare String   // share encrypted to the trustee's public key
-  createdAt      DateTime @default(now())
-
-  @@unique([electionId, trusteeId])
-  @@map("key_shares")
+// LLD §12.3 "Publication Status" (ballot-specific — Draft/Published)
+enum BallotPublicationStatus {
+  DRAFT
+  PUBLISHED
 }
 
-// ---------------------------------------------------------------------------
-// Audit
-// ---------------------------------------------------------------------------
+// LLD §12.3 "Ballot Status" (Editable/Locked) — LLD §12.7
+enum BallotLockStatus {
+  EDITABLE
+  LOCKED
+}
+
+// LLD §8.5 Synchronization Modes
+enum SyncMode {
+  FULL
+  INCREMENTAL
+}
+
+// LLD §8.7 Eligibility Verification — derived from Membership Status (§8.4)
+enum EligibilityStatus {
+  ELIGIBLE
+  INELIGIBLE
+  SUSPENDED
+  TERMINATED
+}
+
+// Audit Record Structure — "Status: Success/Failure"
+enum AuditStatus {
+  SUCCESS
+  FAILURE
+}
+
+// Handoff: "notifications — Async notification queue"; channel per
+// LLD's env vars (SMTP + SMS_API_KEY both configured)
+enum NotificationChannel {
+  EMAIL
+  SMS
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+// LLD §15.9–15.11 — certification, publication, recount lifecycle for a
+// batch of results. Not explicitly named in the LLD; introduced because
+// §15.9–15.11 describe a Certified -> DAT-approved -> Published sequence
+// that needs somewhere to live, and §15.11 recounts need to "preserve
+// the original result history" — which requires each recount to be its
+// own row, not an overwrite.
+enum ResultSetStatus {
+  DRAFT
+  CERTIFIED
+  PUBLISHED
+}
+
+// =============================================================================
+// AUTH & RBAC — LLD §7, §9
+// =============================================================================
+
+// Roles are seeded data (prisma/seed.ts), not a Prisma enum — see
+// shared/cache/role.cache.ts's own reasoning: TypeScript's RoleName type
+// is the compile-time source of truth, this table is the runtime one,
+// and they're kept in sync by hand.
+model Role {
+  id          String   @id @default(uuid())
+  name        String   @unique // must match shared/types/role.types.ts ROLE_NAMES
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  users           User[]
+  rolePermissions RolePermission[]
+
+  @@map("roles")
+}
+
+// LLD Section 19 lists "permissions" as a major table, but §7.7's RBAC
+// table only ever grants permissions at the role level, never mentions
+// per-permission granularity being checked anywhere. Modeling it now
+// for extensibility per the LLD's own table list, but it may end up
+// unused if role-level checks (requireRole) are all M4/M5 ever need —
+// worth revisiting once the auth module is actually built.
+model Permission {
+  id          String   @id @default(uuid())
+  key         String   @unique // e.g. "election:activate"
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String   @map("role_id")
+  permissionId String   @map("permission_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+// LLD §9.3 User Account Attributes
+model User {
+  id           String     @id @default(uuid())
+  memberId     String?    @unique @map("member_id") // FK to MemberSync; null for staff accounts (Officers/Admins/Auditors) with no SACCO membership record
+  fullName     String     @map("full_name")
+  email        String     @unique
+  phoneNumber  String?    @map("phone_number")
+  passwordHash String     @map("password_hash")
+  roleId       String     @map("role_id")
+  status       UserStatus @default(PENDING_ACTIVATION)
+
+  // MFA — LLD §7.6. Columns, not a separate TotpSecret table: this is a
+  // genuine 1:1 relation with no history requirement (unlike
+  // AccountActivation below, there's no legitimate reason to keep old
+  // TOTP secrets around), so a join would add cost for no benefit.
+  mfaEnabled     Boolean @default(false) @map("mfa_enabled")
+  totpSecret     String? @map("totp_secret") // encrypted at rest, not plaintext
+  totpConfirmedAt DateTime? @map("totp_confirmed_at")
+
+  lastLoginAt DateTime? @map("last_login_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  role          Role                @relation(fields: [roleId], references: [id])
+  member        MemberSync?         @relation(fields: [memberId], references: [id])
+  refreshTokens RefreshToken[]
+  accountActivations AccountActivation[]
+  createdElections Election[]       @relation("ElectionCreatedBy")
+  requestedApprovals ApprovalRequest[] @relation("ApprovalRequestedBy")
+  approvalDecisions  ApprovalDecisionRecord[]
+  auditLogs     AuditLog[]
+  notifications Notification[]
+  initiatedSyncs SyncLog[]
+  certifiedResultSets ResultSet[]   @relation("ResultSetCertifiedBy")
+
+  @@map("users")
+}
+
+// LLD §7.4 Refresh Token Management — stored, rotated, revocable
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  tokenHash String    @unique @map("token_hash") // never store the raw token
+  revokedAt DateTime? @map("revoked_at") // null = active; non-null IS "revoked", no separate boolean needed
+  expiresAt DateTime  @map("expires_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+// LLD §7.2 Account Activation — not modeled anywhere else in this schema
+// originally; added once auth.repository.ts's actual needs surfaced it.
+// Multiple rows per user are expected and fine (a user can request a
+// second code if the first email was slow) — "most recent, not expired,
+// not used" is enforced at the query level (auth.repository.ts), not
+// by only ever allowing one row to exist.
+model AccountActivation {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  codeHash  String    @map("code_hash") // SHA-256 of the OTP, never the raw code
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@map("account_activations")
+}
+
+// =============================================================================
+// MEMBERSHIP SYNCHRONIZATION — LLD §8
+// =============================================================================
+
+// LLD §8.4 Data Mapping — synchronized subset of SACCO membership data.
+// This is NOT the User table — a member only gets a User row once they
+// activate an account (LLD §9.2 Role Assignment -> Account Activation).
+model MemberSync {
+  id                 String            @id @default(uuid())
+  membershipNumber   String            @unique @map("membership_number")
+  fullName           String            @map("full_name")
+  nationalId         String?           @unique @map("national_id")
+  eligibilityStatus  EligibilityStatus @default(ELIGIBLE) @map("eligibility_status")
+  branch             String?
+  email              String?
+  phone              String?
+  lastSyncedAt       DateTime          @default(now()) @map("last_synced_at")
+  createdAt          DateTime          @default(now()) @map("created_at")
+  updatedAt          DateTime          @updatedAt @map("updated_at")
+
+  user       User?
+  candidates Candidate[]
+
+  @@index([eligibilityStatus])
+  @@map("member_sync")
+}
+
+// LLD §8.9 Synchronization Sequence + §8.10 Database Operations.
+// Handoff lists this as "sync_logs — Membership synchronization audit history"
+model SyncLog {
+  id                String    @id @default(uuid())
+  initiatedById     String?   @map("initiated_by") // null if triggered by a scheduled job, not a user
+  mode              SyncMode
+  recordsProcessed  Int       @default(0) @map("records_processed")
+  recordsInserted   Int       @default(0) @map("records_inserted")
+  recordsUpdated    Int       @default(0) @map("records_updated")
+  recordsFlagged    Int       @default(0) @map("records_flagged") // LLD §8.6 conflict scenarios
+  errors            Json?     // structured list of per-record sync errors, LLD §8.6
+  startedAt         DateTime  @default(now()) @map("started_at")
+  completedAt       DateTime? @map("completed_at")
+
+  initiatedBy User? @relation(fields: [initiatedById], references: [id])
+
+  @@map("sync_logs")
+}
+
+// =============================================================================
+// ELECTIONS — LLD §10
+// =============================================================================
+
+// LLD §10.3 Election Configuration
+model Election {
+  id                 String            @id @default(uuid())
+  title              String
+  description        String?
+  electionType       ElectionType      @map("election_type")
+  startDate          DateTime          @map("start_date")
+  endDate            DateTime          @map("end_date")
+  timeZone           String            @map("time_zone")
+  status             ElectionStatus    @default(DRAFT)
+  createdById        String            @map("created_by")
+  publicationStatus  PublicationStatus @default(DRAFT) @map("publication_status")
+  archived           Boolean           @default(false)
+  createdAt          DateTime          @default(now()) @map("created_at")
+  updatedAt          DateTime          @updatedAt @map("updated_at")
+
+  createdBy         User               @relation("ElectionCreatedBy", fields: [createdById], references: [id])
+  positions         Position[]
+  candidates        Candidate[]
+  ballots           Ballot[]
+  voterParticipation VoterParticipation[]
+  votes             Vote[]
+  resultSets        ResultSet[]
+  approvalPolicies  ApprovalPolicy[]
+
+  @@index([status])
+  @@map("elections")
+}
+
+// LLD §10.4 Position Management
+model Position {
+  id          String   @id @default(uuid())
+  electionId  String   @map("election_id")
+  title       String
+  seats       Int      @default(1) // LLD §15.6 multi-seat counting
+  displayOrder Int     @default(0) @map("display_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  election         Election          @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  candidates       Candidate[]
+  ballotPositions  BallotPosition[]
+  results          Result[]
+
+  @@unique([electionId, title])
+  @@map("positions")
+}
+
+// =============================================================================
+// CANDIDATES — LLD §11
+// =============================================================================
+
+// LLD §11.5 Candidate Profile — approvalStatus and status are deliberately
+// separate fields, see architectural note above the enums.
+model Candidate {
+  id             String           @id @default(uuid())
+  electionId     String           @map("election_id")
+  positionId     String           @map("position_id")
+  memberId       String           @map("member_id")
+  fullName       String           @map("full_name")
+  biography      String?
+  photoUrl       String?          @map("photo_url")
+  approvalStatus ApprovalStatus   @default(PENDING) @map("approval_status")
+  status         CandidateStatus  @default(ACTIVE)
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+
+  election        Election          @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  position        Position          @relation(fields: [positionId], references: [id], onDelete: Cascade)
+  member          MemberSync        @relation(fields: [memberId], references: [id])
+  ballotCandidates BallotCandidate[]
+  results         Result[]
+
+  // LLD errors.ts: ALREADY_A_CANDIDATE — a member can't be nominated twice
+  // for the same position in the same election.
+  @@unique([electionId, positionId, memberId])
+  @@index([approvalStatus])
+  @@map("candidates")
+}
+
+// =============================================================================
+// BALLOTS — LLD §12
+// =============================================================================
+
+// LLD §12.3 Ballot Structure + §12.8 Versioning. Each row IS one version —
+// this table serves as both "the ballot" and the handoff's "ballot_versions"
+// concept; no separate history table needed since every edit is a new row.
+model Ballot {
+  id                 String                   @id @default(uuid())
+  electionId         String                   @map("election_id")
+  version            Int
+  publicationStatus  BallotPublicationStatus  @default(DRAFT) @map("publication_status")
+  lockStatus         BallotLockStatus         @default(EDITABLE) @map("lock_status")
+  candidateOrdering  String?                  @map("candidate_ordering") // "ALPHABETICAL" | "RANDOMIZED" | "ADMIN_DEFINED" — LLD §12.9; kept as string, not enum, pending confirmation this is the full set
+  publishedAt        DateTime?                @map("published_at")
+  createdAt          DateTime                 @default(now()) @map("created_at")
+  updatedAt          DateTime                 @updatedAt @map("updated_at")
+
+  election  Election         @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  positions BallotPosition[]
+  votes     Vote[]
+
+  @@unique([electionId, version])
+  @@map("ballots")
+}
+
+// LLD §12.4 Position Layout — which positions appear on this ballot version,
+// and the seat count as locked in at that version (Position.seats can change
+// between ballot versions; this snapshots it).
+model BallotPosition {
+  id         String @id @default(uuid())
+  ballotId   String @map("ballot_id")
+  positionId String @map("position_id")
+  seats      Int
+  displayOrder Int  @default(0) @map("display_order")
+
+  ballot     Ballot            @relation(fields: [ballotId], references: [id], onDelete: Cascade)
+  position   Position          @relation(fields: [positionId], references: [id])
+  candidates BallotCandidate[]
+
+  @@unique([ballotId, positionId])
+  @@map("ballot_positions")
+}
+
+// Snapshot of which approved candidates appear under a BallotPosition at
+// that version — needed so a LOCKED ballot (LLD §12.7: "cannot remove
+// candidates") stays immutable even if a candidate is later withdrawn or
+// disqualified after the election goes Active. Not explicitly named in the
+// LLD's table list; added because §12.7's immutability guarantee can't
+// hold without it — without a snapshot, "locked" would just mean the
+// Ballot row can't change while Candidate rows underneath it still could.
+model BallotCandidate {
+  id               String @id @default(uuid())
+  ballotPositionId String @map("ballot_position_id")
+  candidateId      String @map("candidate_id")
+  displayOrder     Int    @default(0) @map("display_order")
+
+  ballotPosition BallotPosition @relation(fields: [ballotPositionId], references: [id], onDelete: Cascade)
+  candidate      Candidate      @relation(fields: [candidateId], references: [id])
+
+  @@unique([ballotPositionId, candidateId])
+  @@map("ballot_candidates")
+}
+
+// =============================================================================
+// VOTING — LLD §13
+// =============================================================================
+
+// LLD §13.7 Anonymous Vote Storage — participation is tracked SEPARATELY
+// from vote content. This table proves "member X voted in election Y",
+// nothing about what they selected.
+model VoterParticipation {
+  id         String   @id @default(uuid())
+  electionId String   @map("election_id")
+  memberId   String   @map("member_id")
+  votedAt    DateTime @default(now()) @map("voted_at")
+
+  election Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+
+  // LLD errors.ts: DoubleVotingError — this constraint IS the
+  // one-person-one-vote enforcement at the database level, not just
+  // application logic.
+  @@unique([electionId, memberId])
+  @@map("voter_participation")
+}
+
+// LLD §13.6–13.7 — encrypted, and DELIBERATELY has no relation to User or
+// MemberSync. Architecture Decision #8: "The votes table will have no
+// foreign key to any user or member table. Ever." This is the one table
+// in this schema where that omission is load-bearing, not an oversight.
+model Vote {
+  id         String @id @default(uuid())
+  electionId String @map("election_id")
+  ballotId   String @map("ballot_id")
+
+  // Encrypted payload — matches EncryptedVotePayload from
+  // shared/crypto/encryption.service.ts field for field. Stored as the
+  // same base64 strings that service already produces, rather than
+  // converting to Bytes, so persistence never needs to re-encode/decode
+  // between what crypto emits and what's stored. Architecture Decision #9.
+  encryptedVote    String @map("encrypted_vote")
+  iv               String
+  authTag          String @map("auth_tag")
+  algorithmVersion String @map("algorithm_version")
+
+  // RSA-2048 signature over encryptedVote, from signature.service.ts —
+  // proves the election authority's key produced this ciphertext.
+  signature String
+
+  // Integrity hash for §15.3 verification — hashes the encrypted
+  // content itself. Distinct from the receipt below, which hashes
+  // voteId + submittedAt + receiptSalt, not vote content.
+  voteHash String @map("vote_hash")
+
+  // Receipt — receipt.service.ts computes
+  // receiptCode = SHA256(voteId + submittedAt + receiptSalt) on demand;
+  // only the salt needs persisting since voteId and submittedAt are
+  // already this row's own id/submittedAt. Re-derived on read instead
+  // of storing receiptCode redundantly.
+  receiptSalt String @map("receipt_salt")
+
+  submittedAt DateTime @default(now()) @map("submitted_at")
+
+  election Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  ballot   Ballot   @relation(fields: [ballotId], references: [id])
+
+  @@index([electionId])
+  @@map("votes")
+}
+
+// =============================================================================
+// DISTRIBUTED ADMINISTRATION TRUST (DAT) / APPROVALS — LLD §14
+// =============================================================================
+
+// LLD §14.5 Approval Policies — configurable per action type, optionally
+// scoped to a specific election. electionId null = global default policy
+// for that action type.
+model ApprovalPolicy {
+  id                     String             @id @default(uuid())
+  actionType             ApprovalActionType @map("action_type")
+  electionId             String?            @map("election_id") // null = global default
+  requiredApprovals      Int                @map("required_approvals")
+  eligibleApproverRoleIds String[]          @map("eligible_approver_role_ids") // Role.id[] — LLD §14.5 "Eligible approver roles"
+  timeoutHours           Int                @default(48) @map("timeout_hours")
+  allowSelfApproval      Boolean            @default(false) @map("allow_self_approval") // LLD §14.5: "Self-approval: Prohibited" by default
+  createdAt              DateTime           @default(now()) @map("created_at")
+  updatedAt              DateTime           @updatedAt @map("updated_at")
+
+  election Election? @relation(fields: [electionId], references: [id], onDelete: Cascade)
+
+  @@unique([actionType, electionId])
+  @@map("approval_policies")
+}
+
+// LLD §14.15 Approval Data Model — field-for-field
+model ApprovalRequest {
+  id                 String             @id @default(uuid())
+  actionType         ApprovalActionType @map("action_type")
+  requestedById      String             @map("requested_by")
+  relatedEntityType  String             @map("related_entity_type") // "Election" | "Candidate" | "Result", etc.
+  relatedEntityId    String             @map("related_entity_id")
+  status             ApprovalStatus     @default(PENDING)
+  requiredApprovals  Int                @map("required_approvals") // snapshot from ApprovalPolicy at creation time
+  currentApprovals   Int                @default(0) @map("current_approvals")
+  currentRejections  Int                @default(0) @map("current_rejections")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  expiresAt          DateTime           @map("expires_at")
+  executedAt         DateTime?          @map("executed_at")
+
+  requestedBy User               @relation("ApprovalRequestedBy", fields: [requestedById], references: [id])
+  decisions   ApprovalDecisionRecord[]
+
+  @@index([status])
+  @@index([relatedEntityType, relatedEntityId])
+  @@map("approval_requests")
+}
+
+// LLD §14.6 — one decision per approver, enforced at the DB level.
+// Named ApprovalDecisionRecord, not ApprovalDecision, because that name
+// is already taken by the ApprovalDecision enum (Approve/Reject) that
+// shared/enums/index.ts re-exports — Prisma models and enums share one
+// namespace, so this collision would have failed to compile.
+model ApprovalDecisionRecord {
+  id                String           @id @default(uuid())
+  approvalRequestId String           @map("approval_request_id")
+  approverId        String           @map("approver_id")
+  decision          ApprovalDecision @map("decision")
+  comment           String?
+  decidedAt         DateTime         @default(now()) @map("decided_at")
+
+  approvalRequest ApprovalRequest @relation(fields: [approvalRequestId], references: [id], onDelete: Cascade)
+  approver        User            @relation(fields: [approverId], references: [id])
+
+  // LLD §14.6: "One decision per approver. No duplicate approvals." —
+  // ApprovalAlreadySubmittedError is this constraint firing.
+  @@unique([approvalRequestId, approverId])
+  @@map("approval_decisions")
+}
+
+// =============================================================================
+// RESULTS — LLD §15
+// =============================================================================
+
+// Certification/publication batch — see enum comment above for why this
+// exists beyond what the LLD names explicitly. One row per count AND per
+// recount (LLD §15.11: "Preserve the original result history").
+model ResultSet {
+  id            String           @id @default(uuid())
+  electionId    String           @map("election_id")
+  status        ResultSetStatus  @default(DRAFT)
+  isRecount     Boolean          @default(false) @map("is_recount")
+  recountOfId   String?          @map("recount_of_id") // self-relation to the ResultSet being recounted
+  certifiedById String?          @map("certified_by")
+  certifiedAt   DateTime?        @map("certified_at")
+  publishedAt   DateTime?        @map("published_at")
+  createdAt     DateTime         @default(now()) @map("created_at")
+
+  election    Election     @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  certifiedBy User?        @relation("ResultSetCertifiedBy", fields: [certifiedById], references: [id])
+  recountOf   ResultSet?   @relation("ResultSetRecount", fields: [recountOfId], references: [id])
+  recounts    ResultSet[]  @relation("ResultSetRecount")
+  results     Result[]
+
+  @@map("result_sets")
+}
+
+// LLD §15.5–15.7 — per-candidate outcome within a ResultSet
+model Result {
+  id          String   @id @default(uuid())
+  resultSetId String   @map("result_set_id")
+  positionId  String   @map("position_id")
+  candidateId String   @map("candidate_id")
+  voteCount   Int      @map("vote_count")
+  rank        Int
+  elected     Boolean  @default(false)
+  tieFlagged  Boolean  @default(false) @map("tie_flagged") // LLD §15.7 Tie Resolution
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  resultSet ResultSet @relation(fields: [resultSetId], references: [id], onDelete: Cascade)
+  position  Position  @relation(fields: [positionId], references: [id])
+  candidate Candidate @relation(fields: [candidateId], references: [id])
+
+  @@unique([resultSetId, candidateId])
+  @@index([resultSetId, positionId])
+  @@map("results")
+}
+
+// =============================================================================
+// AUDIT — Audit Record Structure (hash chain)
+// =============================================================================
 
 model AuditLog {
-  id        String   @id @default(uuid())
-  userId    String?
-  user      User?    @relation(fields: [userId], references: [id])
-  action    String
-  entity    String
-  entityId  String?
-  metadata  Json?
-  createdAt DateTime @default(now())
+  id           String      @id @default(uuid())
+  timestamp    DateTime    @default(now())
+  userId       String?     @map("user_id") // nullable — some events (failed login of unknown email) have no resolvable user
+  module       String
+  action       String
+  entityType   String?     @map("entity_type")
+  entityId     String?     @map("entity_id")
+  status       AuditStatus
+  previousHash String?     @map("previous_hash")
+  currentHash  String      @map("current_hash")
 
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([timestamp])
   @@map("audit_logs")
+}
+
+// =============================================================================
+// NOTIFICATIONS
+// =============================================================================
+
+model Notification {
+  id        String              @id @default(uuid())
+  userId    String?             @map("user_id") // nullable — pre-activation notifications target an email directly, no User row yet
+  type      String // e.g. "ELECTION_ACTIVE", "VOTE_CONFIRMATION", "TOTP_SETUP_REQUIRED"
+  channel   NotificationChannel
+  recipient String // email address or phone number actually used
+  subject   String?
+  body      String
+  status    NotificationStatus  @default(PENDING)
+  sentAt    DateTime?           @map("sent_at")
+  createdAt DateTime            @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([status])
+  @@map("notifications")
 }

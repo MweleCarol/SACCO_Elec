@@ -1,15 +1,10 @@
 node_modules/
 dist/
-
-# Real secrets — only .env.example belongs in git
 .env
-.env.*
-!.env.example
-
-# Generated Prisma migration history is fine to commit, but never local
-# seed-generated secrets (dev passwords, TOTP secrets, RSA private keys)
-prisma/.seed-output/
-
-# Logs, OS/editor noise
+logs/
+coverage/
+src/generated/
 *.log
 .DS_Store
+/generated/prisma
+src/generated/

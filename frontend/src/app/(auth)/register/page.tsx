@@ -6,8 +6,7 @@ import { useForm } from "react-hook-form";
 import { ShieldCheck, Eye, EyeOff, AlertCircle, Loader2 } from "lucide-react";
 
 type RegisterFormValues = {
-  firstName: string;
-  lastName: string;
+  fullName: string;
   membershipNumber: string;
   nationalId: string;
   email: string;
@@ -16,7 +15,7 @@ type RegisterFormValues = {
   confirmPassword: string;
 };
 
-const NAME_PATTERN = /^[A-Za-z][A-Za-z'-]{1,49}$/;
+const FULL_NAME_PATTERN = /^[A-Za-z][A-Za-z'-]*(?:\s+[A-Za-z][A-Za-z'-]*)+$/;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const KE_PHONE_PATTERN = /^(?:\+254|0)(7|1)\d{8}$/;
 const NATIONAL_ID_PATTERN = /^\d{7,8}$/;
@@ -54,8 +53,7 @@ export default function RegisterPage() {
   } = useForm<RegisterFormValues>({
     mode: "onBlur",
     defaultValues: {
-      firstName: "",
-      lastName: "",
+      fullName: "",
       membershipNumber: "",
       nationalId: "",
       email: "",
@@ -104,36 +102,20 @@ export default function RegisterPage() {
 
         {/* Fields */}
         <div className="mt-5 grid grid-cols-1 gap-4 sm:mt-7 sm:grid-cols-2 sm:gap-5">
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="firstName" className={labelClasses}>
-              First name
+          <div className="flex flex-col gap-1.5 sm:col-span-2">
+            <label htmlFor="fullName" className={labelClasses}>
+              Full name
             </label>
             <input
-              id="firstName"
-              placeholder="Wanjiru"
-              className={`${inputClasses} ${errors.firstName ? errorInputClasses : ""}`}
-              {...register("firstName", {
-                required: "First name is required.",
-                pattern: { value: NAME_PATTERN, message: "Letters only, please." },
+              id="fullName"
+              placeholder="Wanjiru Mwangi"
+              className={`${inputClasses} ${errors.fullName ? errorInputClasses : ""}`}
+              {...register("fullName", {
+                required: "Full name is required.",
+                pattern: { value: FULL_NAME_PATTERN, message: "Enter your first and last name." },
               })}
             />
-            <ErrorText message={errors.firstName?.message} />
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="lastName" className={labelClasses}>
-              Last name
-            </label>
-            <input
-              id="lastName"
-              placeholder="Mwangi"
-              className={`${inputClasses} ${errors.lastName ? errorInputClasses : ""}`}
-              {...register("lastName", {
-                required: "Last name is required.",
-                pattern: { value: NAME_PATTERN, message: "Letters only, please." },
-              })}
-            />
-            <ErrorText message={errors.lastName?.message} />
+            <ErrorText message={errors.fullName?.message} />
           </div>
 
           <div className="flex flex-col gap-1.5">
