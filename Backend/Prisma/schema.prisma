@@ -12,7 +12,6 @@ datasource db {
   provider = "postgresql"
 }
 
-
 // =============================================================================
 // ENUMS
 // =============================================================================
@@ -462,12 +461,37 @@ model VoterParticipation {
 // foreign key to any user or member table. Ever." This is the one table
 // in this schema where that omission is load-bearing, not an oversight.
 model Vote {
-  id               String   @id @default(uuid())
-  electionId       String   @map("election_id")
-  ballotId         String   @map("ballot_id")
-  encryptedPayload Bytes    @map("encrypted_payload") // AES-256-GCM ciphertext — Architecture Decision #9
-  voteHash         String   @map("vote_hash") // LLD §13.10 receipt field + §15.3 integrity verification
-  submittedAt      DateTime @default(now()) @map("submitted_at")
+  id         String @id @default(uuid())
+  electionId String @map("election_id")
+  ballotId   String @map("ballot_id")
+
+  // Encrypted payload — matches EncryptedVotePayload from
+  // shared/crypto/encryption.service.ts field for field. Stored as the
+  // same base64 strings that service already produces, rather than
+  // converting to Bytes, so persistence never needs to re-encode/decode
+  // between what crypto emits and what's stored. Architecture Decision #9.
+  encryptedVote    String @map("encrypted_vote")
+  iv               String
+  authTag          String @map("auth_tag")
+  algorithmVersion String @map("algorithm_version")
+
+  // RSA-2048 signature over encryptedVote, from signature.service.ts —
+  // proves the election authority's key produced this ciphertext.
+  signature String
+
+  // Integrity hash for §15.3 verification — hashes the encrypted
+  // content itself. Distinct from the receipt below, which hashes
+  // voteId + submittedAt + receiptSalt, not vote content.
+  voteHash String @map("vote_hash")
+
+  // Receipt — receipt.service.ts computes
+  // receiptCode = SHA256(voteId + submittedAt + receiptSalt) on demand;
+  // only the salt needs persisting since voteId and submittedAt are
+  // already this row's own id/submittedAt. Re-derived on read instead
+  // of storing receiptCode redundantly.
+  receiptSalt String @map("receipt_salt")
+
+  submittedAt DateTime @default(now()) @map("submitted_at")
 
   election Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
   ballot   Ballot   @relation(fields: [ballotId], references: [id])

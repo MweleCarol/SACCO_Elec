@@ -25,10 +25,15 @@ export const config = {
     accessExpiresIn: process.env.JWT_ACCESS_EXPIRES_IN ?? '15m',
     refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN ?? '7d',
   },
-  encryption: {
-    voteKey: requireEnv('VOTE_ENCRYPTION_KEY'),
-    ivLength: parseInt(process.env.VOTE_ENCRYPTION_IV_LENGTH ?? '12', 10),
-  },
+  // Encryption config removed from here — VOTE_ENCRYPTION_KEY,
+  // VOTE_SIGNING_PRIVATE_KEY, and VOTE_SIGNING_PUBLIC_KEY are read,
+  // decoded, and validated directly by shared/crypto/key-management.service.ts.
+  // That file's own comment explains why: crypto-specific parsing
+  // (base64 decode, byte-length checks, PEM parsing) shouldn't live in
+  // generic config code every module depends on. One source of truth
+  // per secret. VOTE_ENCRYPTION_IV_LENGTH is gone entirely — GCM IV
+  // length is a fixed, non-configurable constant in encryption.service.ts,
+  // so a .env variable implying it was tunable was actively misleading.
   security: {
     bcryptRounds: parseInt(process.env.BCRYPT_ROUNDS ?? '12', 10),
     totpIssuer: process.env.TOTP_ISSUER ?? 'SEVS-SACCO',
