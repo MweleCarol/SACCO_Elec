@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { PrismaClient, UserStatus } from '../src/generated/prisma/client.js';
+import { PrismaClient, UserStatus } from '../src/generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
@@ -63,7 +63,12 @@ async function seedAdminUser(adminRoleId: string): Promise<void> {
     return;
   }
 
-  const rawPassword = process.env.SEED_ADMIN_PASSWORD ?? generateBootstrapPassword();
+  // || not ?? deliberately: SEED_ADMIN_PASSWORD='' (present but empty, e.g.
+  // an unfilled .env template value) must also fall through to the
+  // generator. ?? only catches null/undefined — an empty string would
+  // silently pass through as the "password," which is exactly the bug
+  // this line previously had.
+  const rawPassword = process.env.SEED_ADMIN_PASSWORD || generateBootstrapPassword();
   const passwordHash = await bcrypt.hash(rawPassword, config.security.bcryptRounds);
 
   await prisma.user.create({

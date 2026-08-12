@@ -1,7 +1,16 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
+// SEVS SACCO — Prisma Schema
+// Drafted from LLD §7 (Auth/RBAC), §8 (Membership Sync), §9 (Users),
+// §10 (Elections), §11 (Candidates), §12 (Ballots), §13 (Voting),
+// §14 (DAT/Approvals), §15 (Results), Audit Record Structure, and
+// Section 19 (Database Design — major tables + relationships).
+//
+// Naming: snake_case table/column names via @@map/@map, matching the
+// LLD's Section 19 table list exactly. Model names are PascalCase
+// singular per LLD §5.9 Naming Conventions ("Enum: PascalCase").
+//
+// IDs: uuid() throughout — no LLD guidance either way; flagging as a
+// decision, not a silent default. Easy to swap to cuid() before M2
+// migrates if you'd rather.
 
 generator client {
   provider = "prisma-client"
@@ -197,7 +206,7 @@ model User {
   fullName     String     @map("full_name")
   email        String     @unique
   phoneNumber  String?    @map("phone_number")
-  passwordHash String     @map("password_hash")
+  passwordHash String?    @map("password_hash") // null until activation (consumeActivationCodeAndActivateUser sets it atomically with status: ACTIVE)
   roleId       String     @map("role_id")
   status       UserStatus @default(PENDING_ACTIVATION)
 
