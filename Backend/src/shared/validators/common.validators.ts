@@ -23,6 +23,8 @@ export const uuidParamSchema = z.object({
   id: z.string().uuid('Must be a valid UUID'),
 });
 
+export type UuidParam = z.infer<typeof uuidParamSchema>;
+
 /**
  * Pagination query params — coerced from query-string strings to
  * numbers (Zod's z.coerce handles "?page=2" arriving as a string).

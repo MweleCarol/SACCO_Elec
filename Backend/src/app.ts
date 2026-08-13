@@ -5,6 +5,10 @@ import morgan from 'morgan';
 import { config } from '@config/index';
 import { logger } from '@shared/logger';
 
+//Route endpoints
+import {authRoutes} from '@modules/auth/index';
+import { usersRoutes } from '@modules/users/index';
+
 const app: Application = express();
 
 app.use(helmet());
@@ -31,7 +35,12 @@ app.get('/health', (_req: Request, res: Response) => {
 });
 
 // Routes registered here as modules are built
-// app.use(`/api/${config.server.apiVersion}/auth`, authRouter);
+app.use('/api/v1/auth', authRoutes);
+app.use('/api/v1/users', usersRoutes);
+
+
+
+
 
 // 404
 app.use((_req: Request, res: Response) => {

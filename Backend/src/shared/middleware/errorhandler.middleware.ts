@@ -138,8 +138,19 @@ export function errorHandler(
     // P2002 = Unique constraint violation
     // This happens when you try to insert a record that violates a unique index.
     // We translate it to a ConflictError (409) rather than exposing the raw Prisma code.
+    //
+    // Field extraction confirmed empirically (scripts/generate-p2002-check.ts)
+    // against this project's actual Prisma 7 + @prisma/adapter-pg setup:
+    // the field names live at meta.driverAdapterError.cause.constraint.fields,
+    // NOT meta.target — target doesn't exist at all on this driver adapter's
+    // error shape. Every P2002 in the system was silently degrading to the
+    // generic "field" fallback until this was verified and fixed.
     if (err.code === 'P2002') {
-      const fields = (err.meta?.target as string[])?.join(', ') ?? 'field';
+      interface DriverAdapterUniqueConstraintMeta {
+        driverAdapterError?: { cause?: { constraint?: { fields?: string[] } } };
+      }
+      const meta = err.meta as DriverAdapterUniqueConstraintMeta | undefined;
+      const fields = meta?.driverAdapterError?.cause?.constraint?.fields?.join(', ') ?? 'field';
       res.status(HTTP_STATUS.CONFLICT).json({
         success: false,
         message: `A record with this ${fields} already exists`,
