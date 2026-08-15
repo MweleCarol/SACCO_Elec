@@ -31,6 +31,10 @@ export {
   ApprovalActionType,
   ApprovalStatus,
   ApprovalDecision,
+  SyncMode,
+  EligibilityStatus,
+  SyncStatus,
+  
 } from '../../generated/prisma/client'; // relative, 2 levels up from src/shared/enums/ — generated code is never aliased (Architecture Decision #5)
 
 import type { ElectionStatus } from '../../generated/prisma/client';

@@ -8,6 +8,7 @@ import { logger } from '@shared/logger';
 //Route endpoints
 import {authRoutes} from '@modules/auth/index';
 import { usersRoutes } from '@modules/users/index';
+import { membershipSyncRoutes } from '@modules/membership-sync/index';
 
 const app: Application = express();
 
@@ -37,6 +38,8 @@ app.get('/health', (_req: Request, res: Response) => {
 // Routes registered here as modules are built
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/users', usersRoutes);
+app.use('/api/v1/membership-sync', membershipSyncRoutes);
+
 
 
 
