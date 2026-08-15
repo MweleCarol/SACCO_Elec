@@ -109,7 +109,11 @@ enum SyncMode {
   FULL
   INCREMENTAL
 }
-
+enum SyncStatus {
+  SUCCESS
+  PARTIAL_SUCCESS
+  FAILED
+}
 // LLD §8.7 Eligibility Verification — derived from Membership Status (§8.4)
 enum EligibilityStatus {
   ELIGIBLE
@@ -305,10 +309,13 @@ model SyncLog {
   id                String    @id @default(uuid())
   initiatedById     String?   @map("initiated_by") // null if triggered by a scheduled job, not a user
   mode              SyncMode
+  status            SyncStatus @default(FAILED)
+  recordsReceived    Int       @default(0) @map("records_received")
   recordsProcessed  Int       @default(0) @map("records_processed")
   recordsInserted   Int       @default(0) @map("records_inserted")
   recordsUpdated    Int       @default(0) @map("records_updated")
-  recordsFlagged    Int       @default(0) @map("records_flagged") // LLD §8.6 conflict scenarios
+  recordsRejected  Int       @default(0) @map("records_rejected")
+  recordsFailed    Int       @default(0) @map("records_failed")
   errors            Json?     // structured list of per-record sync errors, LLD §8.6
   startedAt         DateTime  @default(now()) @map("started_at")
   completedAt       DateTime? @map("completed_at")
