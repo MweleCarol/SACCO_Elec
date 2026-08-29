@@ -73,8 +73,33 @@ export const mockCandidates: Candidate[] = [
     submittedAt: "2026-08-05T11:00:00Z",
     votesReceivedDevOnly: 61,
   },
+  {
+  id: "cand-agm-001",
+  electionId: "el-2025-agm",
+  positionId: "pos-agm-chair",
+  membershipNumber: "SCCO-00231",
+  name: "James Kariuki",
+  bio: "Long-serving SACCO board member with a focus on transparent governance.",
+  photoUrl: "/mock/avatars/placeholder.jpg",
+  status: "APPROVED",
+  submittedAt: "2025-10-01T09:00:00Z",
+  votesReceivedDevOnly: 480,
+},
+{
+  id: "cand-agm-002",
+  electionId: "el-2025-agm",
+  positionId: "pos-agm-chair",
+  membershipNumber: "SCCO-00347",
+  name: "Esther Wambui",
+  bio: "Branch delegate advocating for digital services expansion.",
+  photoUrl: "/mock/avatars/placeholder.jpg",
+  status: "APPROVED",
+  submittedAt: "2025-10-01T09:15:00Z",
+  votesReceivedDevOnly: 332,
+},
 ];
 
+// Mock service functions to retrieve candidates based on election or position
 export function getCandidatesByElection(electionId: string): Candidate[] {
   return mockCandidates.filter((c) => c.electionId === electionId);
 }
@@ -85,4 +110,8 @@ export function getCandidatesByPosition(positionId: string): Candidate[] {
 
 export function getPendingCandidateApprovals(): Candidate[] {
   return mockCandidates.filter((c) => c.status === "PENDING");
+}
+
+export function getApprovedCandidatesByElection(electionId: string): Candidate[] {
+  return mockCandidates.filter((c) => c.electionId === electionId && c.status === "APPROVED");
 }
