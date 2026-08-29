@@ -1,0 +1,14 @@
+@import "tailwindcss";
+
+:root {
+  --sevs-navy: #13284a;
+  --sevs-navy-hover: #0d1f39;
+  --sevs-bg: #f5f7fa;
+  --sevs-border: #e3e6eb;
+  --sevs-text-muted: #6b7280;
+  --sevs-text-body: #374151;
+}
+
+body {
+  background-color: var(--sevs-bg);
+}
