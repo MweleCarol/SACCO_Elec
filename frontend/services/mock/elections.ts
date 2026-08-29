@@ -1,5 +1,17 @@
 import type { ElectionStatus, Position, Election, DashboardStats } from "../../types/election";
 
+const MEMBER_VISIBLE_STATUSES: ElectionStatus[] = [
+  "SCHEDULED",
+  "ACTIVE",
+  "CLOSED",
+  "RESULTS_PUBLISHED",
+  "ARCHIVED",
+];
+
+export function getMemberVisibleElections(): Election[] {
+  return mockElections.filter((e) => MEMBER_VISIBLE_STATUSES.includes(e.status));
+}
+
 export const mockElections: Election[] = [
   {
     id: "el-2026-general",
@@ -55,6 +67,23 @@ export const mockElections: Election[] = [
     approvalsRequired: 2,
     approvalsReceived: 0,
   },
+  {
+  id: "el-2025-agm",
+  title: "2025 SACCO Annual General Meeting Election",
+  description: "Annual leadership election held during the 2025 AGM.",
+  status: "RESULTS_PUBLISHED",
+  startDate: "2025-11-10T08:00:00Z",
+  endDate: "2025-11-10T18:00:00Z",
+  totalEligibleVoters: 1180,
+  totalVotesCast: 812,
+  positions: [
+    { id: "pos-agm-chair", electionId: "el-2025-agm", title: "Chairperson", seats: 1 },
+  ],
+  createdBy: "usr-admin-001",
+  approvalStatus: "APPROVED",
+  approvalsRequired: 2,
+  approvalsReceived: 2,
+},
 ];
 
 export function getElectionById(id: string): Election | undefined {

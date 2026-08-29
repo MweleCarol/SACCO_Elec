@@ -1,0 +1,360 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                String             @id @default(uuid())
+  email             String             @unique
+  passwordHash      String
+  role              UserRole
+  status            UserStatus         @default(ACTIVE)
+  mfaEnabled        Boolean            @default(false)
+  totpSecret        String?
+  lastUsedTimeStep  Int?
+  fullName         String
+  phoneNumber      String?
+  membershipNumber  String?            @unique
+  nationalId        String?            @unique
+  branch            String?
+  membershipStatus  MembershipStatus?
+  lastSyncedAt      DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  approvalDecisions ApprovalDecision[]
+  approvalRequests  ApprovalRequest[]  @relation("ApprovalRequestedBy")
+  auditLogs         AuditLog[]
+  candidateProfile  Candidate[]
+  createdElections  Election[]         @relation("ElectionCreatedBy")
+  updatedElections  Election[]         @relation("ElectionUpdatedBy")
+  notifications     Notification[]
+  participations    Participation[]
+  refreshTokens     RefreshToken[]
+
+  @@index([role])
+  @@index([status])
+  @@index([membershipStatus])
+}
+
+model RefreshToken {
+  id           String        @id @default(uuid())
+  userId       String
+  tokenHash    String        @unique
+  expiresAt    DateTime
+  revoked      Boolean       @default(false)
+  revokedAt    DateTime?
+  replacedById String?       @unique
+  createdAt    DateTime      @default(now())
+  createdByIp  String?
+  replacedBy   RefreshToken? @relation("TokenRotation", fields: [replacedById], references: [id])
+  rotatedFrom  RefreshToken? @relation("TokenRotation")
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Election {
+  id                 String            @id @default(uuid())
+  name               String
+  description        String?
+  startDate          DateTime
+  endDate            DateTime
+  status             ElectionStatus    @default(DRAFT)
+  requiredApprovals  Int               @default(2)
+  createdById        String
+  updatedById        String?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  activatedAt        DateTime?
+  closedAt           DateTime?
+  resultsPublishedAt DateTime?
+  archivedAt         DateTime?
+  approvalRequests   ApprovalRequest[]
+  candidates         Candidate[]
+  createdBy          User              @relation("ElectionCreatedBy", fields: [createdById], references: [id])
+  updatedBy          User?             @relation("ElectionUpdatedBy", fields: [updatedById], references: [id])
+  notifications      Notification[]
+  participations     Participation[]
+  positions          Position[]
+  results            Result[]
+  votes              Vote[]
+
+  @@index([status])
+  @@index([startDate, endDate])
+}
+
+model Position {
+  id          String      @id @default(uuid())
+  electionId  String
+  name        String
+  description String?
+  seats       Int         @default(1)
+  order       Int         @default(0)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  candidates  Candidate[]
+  election    Election    @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  results     Result[]
+  votes       Vote[]
+
+  @@unique([electionId, name])
+  @@index([electionId])
+}
+
+model Candidate {
+  id          String          @id @default(uuid())
+  electionId  String
+  positionId  String
+  memberId    String?
+  displayName String
+  manifesto   String?
+  photoUrl    String?
+  status      CandidateStatus @default(PENDING_REVIEW)
+  withdrawnAt DateTime?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  election    Election        @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  member      User?           @relation(fields: [memberId], references: [id])
+  position    Position        @relation(fields: [positionId], references: [id], onDelete: Cascade)
+  results     Result[]
+  votes       Vote[]
+
+  @@index([electionId])
+  @@index([positionId])
+  @@index([status])
+}
+
+model Participation {
+  id         String   @id @default(uuid())
+  electionId String
+  userId     String
+  votedAt    DateTime @default(now())
+  election   Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id])
+
+  @@unique([electionId, userId])
+  @@index([electionId])
+}
+
+model Vote {
+  id               String    @id @default(uuid())
+  electionId       String
+  positionId       String
+  candidateId      String
+  encryptedPayload String
+  anonymousToken   String    @unique
+  castAt           DateTime  @default(now())
+  candidate        Candidate @relation(fields: [candidateId], references: [id])
+  election         Election  @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  position         Position  @relation(fields: [positionId], references: [id], onDelete: Cascade)
+
+  @@index([electionId, positionId])
+  @@index([candidateId])
+}
+
+model ApprovalRequest {
+  id                String             @id @default(uuid())
+  actionType        ApprovalActionType
+  resourceType      String
+  resourceId        String
+  electionId        String?
+  requestedById     String
+  requiredApprovals Int
+  status            ApprovalStatus     @default(PENDING)
+  payload           Json?
+  expiresAt         DateTime
+  createdAt         DateTime           @default(now())
+  decidedAt         DateTime?
+  executedAt        DateTime?
+  decisions         ApprovalDecision[]
+  election          Election?          @relation(fields: [electionId], references: [id])
+  requestedBy       User               @relation("ApprovalRequestedBy", fields: [requestedById], references: [id])
+
+  @@index([resourceType, resourceId])
+  @@index([status])
+  @@index([electionId])
+}
+
+model ApprovalDecision {
+  id                String                @id @default(uuid())
+  approvalRequestId String
+  approverId        String
+  decision          ApprovalDecisionValue
+  comment           String?
+  decidedAt         DateTime              @default(now())
+  approvalRequest   ApprovalRequest       @relation(fields: [approvalRequestId], references: [id], onDelete: Cascade)
+  approver          User                  @relation(fields: [approverId], references: [id])
+
+  @@unique([approvalRequestId, approverId])
+  @@index([approvalRequestId])
+}
+
+model Result {
+  id          String       @id @default(uuid())
+  electionId  String
+  positionId  String
+  candidateId String
+  voteCount   Int
+  isWinner    Boolean      @default(false)
+  status      ResultStatus @default(DRAFT)
+  computedAt  DateTime     @default(now())
+  publishedAt DateTime?
+  candidate   Candidate    @relation(fields: [candidateId], references: [id])
+  election    Election     @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  position    Position     @relation(fields: [positionId], references: [id], onDelete: Cascade)
+
+  @@unique([electionId, positionId, candidateId])
+  @@index([electionId])
+}
+
+model AuditLog {
+  id           String       @id @default(uuid())
+  actorId      String?
+  action       String
+  resourceType String?
+  resourceId   String?
+  electionId   String?
+  outcome      AuditOutcome
+  metadata     Json?
+  previousHash String
+  currentHash  String       @unique
+  createdAt    DateTime     @default(now())
+  actor        User?        @relation(fields: [actorId], references: [id])
+
+  @@index([actorId])
+  @@index([action])
+  @@index([resourceType, resourceId])
+  @@index([createdAt])
+}
+
+model Notification {
+  id         String           @id @default(uuid())
+  userId     String
+  type       NotificationType
+  title      String
+  message    String
+  read       Boolean          @default(false)
+  electionId String?
+  createdAt  DateTime         @default(now())
+  readAt     DateTime?
+  election   Election?        @relation(fields: [electionId], references: [id])
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read])
+}
+
+model AIInsight {
+  id             String     @id @default(uuid())
+  eventType      String
+  resourceType   String?
+  resourceId     String?
+  features       Json
+  riskLevel      RiskLevel?
+  recommendation String
+  reasoning      String
+  evidence       Json
+  confidence     Float?
+  acknowledgedBy String?
+  acknowledgedAt DateTime?
+  createdAt      DateTime   @default(now())
+
+  @@index([eventType])
+  @@index([riskLevel])
+  @@index([resourceType, resourceId])
+}
+
+enum UserRole {
+  MEMBER
+  ELECTION_OFFICER
+  ELECTION_ADMINISTRATOR
+  AUDITOR
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DEACTIVATED
+  PENDING_ACTIVATION
+}
+
+enum MembershipStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  EXITED
+}
+
+enum ElectionStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  SCHEDULED
+  ACTIVE
+  CLOSED
+  RESULTS_PUBLISHED
+  ARCHIVED
+}
+
+enum CandidateStatus {
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+  WITHDRAWN
+}
+
+enum ApprovalActionType {
+  ELECTION_ACTIVATION
+  ELECTION_CANCELLATION
+  ELECTION_RESCHEDULE
+  CANDIDATE_APPROVAL
+  RESULT_PUBLICATION
+  MEMBERSHIP_SYNC_OVERRIDE
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+  EXECUTED
+}
+
+enum ApprovalDecisionValue {
+  APPROVE
+  REJECT
+}
+
+enum AuditOutcome {
+  SUCCESS
+  FAILURE
+  DENIED
+}
+
+enum NotificationType {
+  ELECTION_SCHEDULED
+  ELECTION_ACTIVATED
+  ELECTION_CLOSING_SOON
+  ELECTION_CLOSED
+  RESULTS_PUBLISHED
+  APPROVAL_REQUESTED
+  APPROVAL_DECIDED
+  CANDIDATE_STATUS_CHANGED
+  SYSTEM_ALERT
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum ResultStatus {
+  DRAFT
+  VERIFIED
+  PUBLISHED
+}

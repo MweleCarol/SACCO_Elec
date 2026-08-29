@@ -3,13 +3,16 @@
 import type { ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { useCurrentMember } from "@/hooks/useCurrentMember";
-import { VoterSidebar } from "@/components/layout/VoterSidebar";
-import { AdminSidebar } from "@/components/layout/AdminSidebar";
+import { RoleSidebar } from "@/components/layout/RoleSidebar";
+import type { UserRole } from "@/types/member";
 
 const PUBLIC_PATHS = ["/", "/login", "/register", "/forgot-password"];
 
-// AppShell component that wraps the application layout, rendering either the VoterSidebar or AdminSidebar based on the current member's role.
-// It also handles public paths and loading states.
+// The AppShell component serves as the main layout for the application, determining which sidebar to display based on the user's role and the current path. 
+// It checks if the current path is public, and if so, it renders the children directly.
+//  If the user is still loading, it shows a loading state. 
+// Depending on whether the user is a member or has a specific role, it renders either the VoterSidebar or the RoleSidebar with appropriate navigation items.
+
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { member, isLoading } = useCurrentMember();
@@ -22,15 +25,10 @@ export function AppShell({ children }: { children: ReactNode }) {
     return <div className="min-h-screen bg-[var(--sevs-bg)]" />;
   }
 
-  const isAdminRole =
-    member?.role === "ELECTION_OFFICER" ||
-    member?.role === "ADMINISTRATOR" ||
-    member?.role === "AUDITOR";
-
   return (
-    <div className="flex min-h-screen bg-[var(--sevs-bg)]">
-      {isAdminRole ? <AdminSidebar /> : <VoterSidebar />}
-      <div className="flex-1">{children}</div>
+    <div className="flex h-screen bg-[var(--sevs-bg)]">
+      <RoleSidebar role={member?.role ?? "MEMBER"} />
+      <div className="flex-1 overflow-y-auto">{children}</div>
     </div>
   );
 }

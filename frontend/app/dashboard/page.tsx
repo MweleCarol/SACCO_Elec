@@ -3,9 +3,17 @@
 import { useCurrentMember } from "@/hooks/useCurrentMember";
 import { Topbar } from "@/components/layout/Topbar";
 import { VoterDashboard } from "@/components/voter/VoterDashboard";
-import { AdminDashboard } from "@/components/admin/AdminDashboard";
+import { ElectionOfficerDashboard } from "@/components/admin/ElectionOfficerDashboard";
+import { ElectionAdministratorDashboard } from "@/components/admin/ElectionAdministratorDashboard";
+import { AuditorDashboard } from "@/components/admin/AuditorDashboard";
 
-// DashboardPage component that renders the appropriate dashboard based on the user's role (admin or voter).
+const SUBTITLES: Record<string, (firstName: string) => string> = {
+  MEMBER: (firstName) => `Welcome back, ${firstName}`,
+  ELECTION_OFFICER: () => "Manage elections, candidates and approvals",
+  ADMINISTRATOR: () => "System administration and election oversight",
+  AUDITOR: () => "Election oversight, audit activity and governance monitoring",
+};
+
 export default function DashboardPage() {
   const { member, isLoading } = useCurrentMember();
 
@@ -27,17 +35,15 @@ export default function DashboardPage() {
     );
   }
 
-  const isAdminRole =
-    member.role === "ELECTION_OFFICER" || member.role === "ADMINISTRATOR" || member.role === "AUDITOR";
+  const subtitle = SUBTITLES[member.role](member.name.split(" ")[0]);
 
   return (
     <>
-      <Topbar
-        title="Dashboard"
-        subtitle={isAdminRole ? "Election administration overview" : `Welcome back, ${member.name.split(" ")[0]}`}
-        notificationCount={3}
-      />
-      {isAdminRole ? <AdminDashboard user={member} /> : <VoterDashboard user={member} />}
+      <Topbar title="Dashboard" subtitle={subtitle} notificationCount={3} />
+      {member.role === "MEMBER" && <VoterDashboard user={member} />}
+      {member.role === "ELECTION_OFFICER" && <ElectionOfficerDashboard user={member} />}
+      {member.role === "ADMINISTRATOR" && <ElectionAdministratorDashboard user={member} />}
+      {member.role === "AUDITOR" && <AuditorDashboard user={member} />}
     </>
   );
 }
