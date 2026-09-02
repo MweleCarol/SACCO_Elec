@@ -1,8 +1,11 @@
+"use client";
 
 import Link from "next/link";
 import type { Election } from "@/types/election";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { getVotingProgress } from "@/services/mock/elections";
+import { useCurrentMember } from "@/hooks/useCurrentMember";
+import { getVotingProgress, getComputedLifecycleStatus, getDisplayStatus, isAcceptingNominations } from "@/services/mock/elections";
+import { hasAppliedForElection } from "@/services/mock/candidates";
 
 interface ElectionListCardProps {
   election: Election;
@@ -14,16 +17,21 @@ function formatDateRange(start: string, end: string) {
 }
 
 export function ElectionListCard({ election }: ElectionListCardProps) {
+  const { member } = useCurrentMember();
   const progress = getVotingProgress(election);
+  const status = getComputedLifecycleStatus(election);
 
   const cta =
-    election.status === "ACTIVE"
+    status === "ACTIVE"
       ? { label: "Vote Now", href: `/vote/${election.id}` }
-      : election.status === "CLOSED" ||
-        election.status === "RESULTS_PUBLISHED" ||
-        election.status === "ARCHIVED"
+      : status === "CLOSED" || status === "RESULTS_PUBLISHED" || status === "ARCHIVED"
       ? { label: "View Results", href: `/results?election=${election.id}` }
       : { label: "View Details", href: `/elections/${election.id}` };
+
+  const canApply =
+    member &&
+    isAcceptingNominations(election) &&
+    !hasAppliedForElection(member.id, election.id);
 
   return (
     <div className="rounded-2xl border border-[var(--sevs-border)] bg-white p-4 shadow-sm sm:p-5">
@@ -33,11 +41,11 @@ export function ElectionListCard({ election }: ElectionListCardProps) {
           <p className="mt-1 line-clamp-2 text-sm text-[var(--sevs-text-muted)]">{election.description}</p>
         </div>
         <span className="shrink-0">
-          <StatusBadge status={election.status} />
+          <StatusBadge status={getDisplayStatus(election)} />
         </span>
       </div>
 
-      {election.status === "ACTIVE" && (
+      {status === "ACTIVE" && (
         <div className="mt-4">
           <div className="mb-1.5 flex items-center justify-between text-xs font-semibold text-[var(--sevs-text-muted)]">
             <span>Voting progress</span>
@@ -46,6 +54,18 @@ export function ElectionListCard({ election }: ElectionListCardProps) {
           <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-100">
             <div className="h-full rounded-full bg-[var(--sevs-navy)]" style={{ width: `${progress}%` }} />
           </div>
+        </div>
+      )}
+
+      {canApply && (
+        <div className="mt-4 rounded-lg bg-amber-50 px-3 py-2.5">
+          <p className="text-xs font-semibold text-amber-800">Candidate applications are open.</p>
+          <Link
+            href={`/candidates/apply/${election.id}`}
+            className="mt-1.5 inline-block text-xs font-bold text-[var(--sevs-navy)] hover:underline"
+          >
+            Apply to Become a Candidate →
+          </Link>
         </div>
       )}
 

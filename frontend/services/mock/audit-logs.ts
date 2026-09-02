@@ -84,3 +84,9 @@ export function getAuditEventCountForElection(electionId: string): number {
 export function getHighRiskAuditLogs(): AuditLogEntry[] {
   return mockAuditLogs.filter((log) => log.riskLevel === "HIGH");
 }
+
+export function getElectionActivityTimeline(electionId: string): AuditLogEntry[] {
+  return mockAuditLogs
+    .filter((log) => log.electionId === electionId)
+    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+}

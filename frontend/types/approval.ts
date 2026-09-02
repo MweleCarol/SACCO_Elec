@@ -1,15 +1,22 @@
-
-export type ApprovalType = "CANDIDATE_APPROVAL" | "ELECTION_ACTION" | "VERIFICATION_REQUEST";
+export type ApprovalType = "CANDIDATE_APPROVAL" | "ELECTION_ACTIVATION" | "ELECTION_CLOSURE" | "RESULT_PUBLICATION";
 export type ApprovalStatus = "PENDING" | "APPROVED" | "REJECTED";
+export type ApprovalStageStatus = "PENDING" | "APPROVED" | "REJECTED";
+
+export interface ApprovalStage {
+  role: "ELECTION_OFFICER" | "ADMINISTRATOR";
+  approverName?: string;
+  status: ApprovalStageStatus;
+  decidedAt?: string;
+  reason?: string;
+}
 
 export interface Approval {
   id: string;
   type: ApprovalType;
-  targetId: string; // Candidate.id, Election.id, or Member.id depending on type
-  targetLabel: string; // human-readable label for UI
-  requestedBy: string; // Member.id
-  status: ApprovalStatus;
-  approvalsRequired: number;
-  approvalsReceived: number;
-  requestedAt: string; // ISO date string
+  targetId: string; // Candidate.id or Election.id
+  targetLabel: string;
+  requestedBy: string;
+  requestedAt: string;
+  status: ApprovalStatus; // overall — derived from stages, but stored for quick filtering
+  stages: [ApprovalStage, ApprovalStage]; // exactly two: officer stage, then admin stage
 }

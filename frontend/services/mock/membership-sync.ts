@@ -1,4 +1,4 @@
-import type { MembershipSyncStatus } from "@/types/membership-sync";
+import type { MembershipSyncStatus, SyncHistoryEntry } from "@/types/membership-sync";
 
 // Mock data for membership sync status
 export const mockMembershipSync: MembershipSyncStatus = {
@@ -11,3 +11,15 @@ export const mockMembershipSync: MembershipSyncStatus = {
     { id: "sync-002", date: "2026-08-22T08:30:00Z", recordsProcessed: 1241, status: "SUCCESSFUL" },
   ],
 };
+
+export function runMockSync(): SyncHistoryEntry {
+  const entry: SyncHistoryEntry = {
+    id: `sync-${Date.now()}`,
+    date: new Date().toISOString(),
+    recordsProcessed: mockMembershipSync.membersReceived,
+    status: "SUCCESSFUL",
+  };
+  mockMembershipSync.history.unshift(entry);
+  mockMembershipSync.lastSyncedAt = entry.date;
+  return entry;
+}

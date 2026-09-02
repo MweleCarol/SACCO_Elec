@@ -2,7 +2,8 @@ import Link from "next/link";
 import type { Member } from "@/types/member";
 import { StatCard } from "@/components/dashboard/StatCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { mockElections, getVotingProgress } from "@/services/mock/elections";
+import { CopilotCard } from "@/components/officer/CopilotCard";
+import { mockElections, getVotingProgress, getComputedLifecycleStatus, getDisplayStatus } from "@/services/mock/elections";
 import { getCandidatesByElection, mockCandidates } from "@/services/mock/candidates";
 import { getPendingApprovalCounts, mockApprovals } from "@/services/mock/approvals";
 import { mockAnomalies } from "@/services/mock/ai-governance";
@@ -13,7 +14,7 @@ interface ElectionOfficerDashboardProps {
 }
 
 export function ElectionOfficerDashboard({ user }: ElectionOfficerDashboardProps) {
-  const activeElections = mockElections.filter((e) => e.status === "ACTIVE");
+  const activeElections = mockElections.filter((e) => getComputedLifecycleStatus(e) === "ACTIVE");
   const approvedCandidates = mockCandidates.filter((c) => c.status === "APPROVED").length;
   const approvalCounts = getPendingApprovalCounts();
 
@@ -51,14 +52,14 @@ export function ElectionOfficerDashboard({ user }: ElectionOfficerDashboardProps
               <tr key={election.id}>
                 <td className="py-3 font-medium text-[var(--sevs-navy)]">{election.title}</td>
                 <td className="py-3">
-                  <StatusBadge status={election.status} />
+                  <StatusBadge status={getDisplayStatus(election)} />
                 </td>
                 <td className="py-3 text-[var(--sevs-text-body)]">
                   {getCandidatesByElection(election.id).length}
                 </td>
                 <td className="py-3">
                   <Link href={`/elections/${election.id}`} className="font-bold text-[var(--sevs-navy)] hover:underline">
-                    {election.status === "DRAFT" || election.status === "PENDING_APPROVAL" ? "Review" : "Manage"}
+                    {election.approvalStatus === "DRAFT" || election.approvalStatus === "PENDING_APPROVAL" ? "Review" : "Manage"}
                   </Link>
                 </td>
               </tr>
@@ -67,7 +68,7 @@ export function ElectionOfficerDashboard({ user }: ElectionOfficerDashboardProps
         </table>
       </div>
 
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <div className="rounded-2xl border border-[var(--sevs-border)] bg-white p-6 shadow-sm">
           <h3 className="mb-4 text-sm font-bold uppercase tracking-wide text-[var(--sevs-text-muted)]">Pending Approvals</h3>
           <div className="space-y-3 text-sm">
@@ -100,6 +101,8 @@ export function ElectionOfficerDashboard({ user }: ElectionOfficerDashboardProps
             <p className="text-sm text-[var(--sevs-text-muted)]">No anomalies detected.</p>
           )}
         </div>
+
+        <CopilotCard />
       </div>
     </div>
   );

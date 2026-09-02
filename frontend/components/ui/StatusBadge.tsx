@@ -12,7 +12,11 @@ const TONE_STYLES: Record<BadgeTone, string> = {
 };
 
 // Maps various status strings to their corresponding badge tones (colors).
+// Includes both the raw enum values (candidate/approval statuses, still
+// uppercase) and the human-readable DisplayStatus strings from
+// getDisplayStatus() (elections, now Title Case).
 const STATUS_TONE: Record<string, BadgeTone> = {
+  // raw enum values (candidates, approvals, sync history, risk levels, member status)
   ACTIVE: "green",
   APPROVED: "green",
   COMPLETED: "gray",
@@ -28,6 +32,19 @@ const STATUS_TONE: Record<string, BadgeTone> = {
   HIGH: "red",
   MEDIUM: "amber",
   LOW: "gray",
+  SUSPENDED: "red",
+  SUCCESSFUL: "green",
+  FAILED: "red",
+
+  // DisplayStatus values from getDisplayStatus() — election badges
+  Draft: "gray",
+  "Pending Approval": "amber",
+  Approved: "green",
+  Scheduled: "blue",
+  Active: "green",
+  Closed: "gray",
+  "Results Published": "gray",
+  Archived: "gray",
 };
 
 interface StatusBadgeProps {
@@ -36,9 +53,10 @@ interface StatusBadgeProps {
 
 export function StatusBadge({ status }: StatusBadgeProps) {
   const tone = STATUS_TONE[status] ?? "gray";
+  const label = status.includes("_") ? status.replace(/_/g, " ").toLowerCase() : status;
   return (
     <span className={clsx("inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold capitalize", TONE_STYLES[tone])}>
-      {status.replace(/_/g, " ").toLowerCase()}
+      {label}
     </span>
   );
 }

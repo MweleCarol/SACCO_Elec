@@ -25,10 +25,12 @@ export const NAV_CONFIG: Record<UserRole, { portalLabel: string; items: NavItem[
       { href: "/dashboard", label: "Dashboard", icon: Home, primary: true },
       { href: "/elections", label: "Elections", icon: Vote, primary: true },
       { href: "/candidates", label: "Candidates", icon: Users, primary: true },
+      { href: "/my-candidacy", label: "My Candidacy", icon: UserCircle },
       { href: "/my-voting-activity", label: "Activity", icon: ClipboardList, primary: true },
       { href: "/results", label: "Results", icon: BarChart3 },
       { href: "/notifications", label: "Notifications", icon: Bell },
       { href: "/profile", label: "Profile", icon: Settings },
+       
     ],
   },
   ELECTION_OFFICER: {

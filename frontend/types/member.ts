@@ -1,5 +1,6 @@
 
 export type UserRole = "MEMBER" | "ELECTION_OFFICER" | "ADMINISTRATOR" | "AUDITOR";
+export type MemberStatus = "ACTIVE" | "SUSPENDED";
 
 export interface Member {
   id: string;
@@ -12,4 +13,5 @@ export interface Member {
   isOnline: boolean;
   avatarUrl: string;
   createdAt: string; // ISO date string
+  status?: MemberStatus;
 }
