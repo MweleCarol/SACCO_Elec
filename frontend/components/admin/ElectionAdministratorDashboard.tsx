@@ -1,9 +1,10 @@
 import Link from "next/link";
 import type { Member } from "@/types/member";
 import { StatCard } from "@/components/dashboard/StatCard";
+import { CopilotCard } from "@/components/officer/CopilotCard";
 import { mockElections, mockDashboardStats } from "@/services/mock/elections";
 import { getPendingApprovalCounts } from "@/services/mock/approvals";
-import { mockRegisteredMembersCount } from "@/services/mock/members";
+import { mockRegisteredMembersCount } from "@/services/mock/members"; // TODO: confirm this path — singular member.ts elsewhere in the app
 import { mockMembershipSync } from "@/services/mock/membership-sync";
 import { getHighRiskAuditLogs } from "@/services/mock/audit-logs";
 import { Users, Vote, ClipboardCheck, AlertTriangle } from "lucide-react";
@@ -60,7 +61,7 @@ export function ElectionAdministratorDashboard({ user }: ElectionAdministratorDa
         </table>
       </div>
 
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <div className="rounded-2xl border border-[var(--sevs-border)] bg-white p-6 shadow-sm">
           <h3 className="mb-4 text-sm font-bold uppercase tracking-wide text-[var(--sevs-text-muted)]">Membership Sync</h3>
           <p className="text-sm text-[var(--sevs-text-muted)]">
@@ -85,6 +86,8 @@ export function ElectionAdministratorDashboard({ user }: ElectionAdministratorDa
             Review Alerts →
           </Link>
         </div>
+
+        <CopilotCard />
       </div>
     </div>
   );

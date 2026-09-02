@@ -1,11 +1,13 @@
 "use client";
-
+// app/elections/page.tsx
+import Link from "next/link";
 import { useState } from "react";
 import { useCurrentMember } from "@/hooks/useCurrentMember";
 import { Topbar } from "@/components/layout/Topbar";
 import { ElectionListCard } from "@/components/voter/ElectionListCard";
-import { getMemberVisibleElections } from "@/services/mock/elections";
-import type { ElectionStatus } from "@/types/election";
+import { getMemberVisibleElections, getComputedLifecycleStatus } from "@/services/mock/elections";
+import type { LifecycleStatus } from "@/types/election";
+import { ElectionManagementTable } from "@/components/officer/ElectionManagementTable";
 
 type TabKey = "ALL" | "ACTIVE" | "UPCOMING" | "CLOSED";
 
@@ -16,11 +18,11 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "CLOSED", label: "Closed" },
 ];
 
-function matchesTab(status: ElectionStatus, tab: TabKey): boolean {
+function matchesTab(lifecycle: LifecycleStatus, tab: TabKey): boolean {
   if (tab === "ALL") return true;
-  if (tab === "ACTIVE") return status === "ACTIVE";
-  if (tab === "UPCOMING") return status === "SCHEDULED";
-  return status === "CLOSED" || status === "RESULTS_PUBLISHED" || status === "ARCHIVED";
+  if (tab === "ACTIVE") return lifecycle === "ACTIVE";
+  if (tab === "UPCOMING") return lifecycle === "SCHEDULED";
+  return lifecycle === "CLOSED" || lifecycle === "RESULTS_PUBLISHED" || lifecycle === "ARCHIVED";
 }
 
 export default function VoterElectionsPage() {
@@ -43,7 +45,29 @@ export default function VoterElectionsPage() {
     );
   }
 
-  const elections = getMemberVisibleElections().filter((e) => matchesTab(e.status, tab));
+  const isOfficerOrAdmin = member.role === "ELECTION_OFFICER" || member.role === "ADMINISTRATOR";
+
+  if (isOfficerOrAdmin) {
+    return (
+      <>
+        <Topbar title="Elections" subtitle="Create and manage SACCO elections" />
+        <div className="space-y-5 p-4 sm:p-8">
+          <Link
+            href="/elections/new"
+            className="inline-block rounded-lg bg-[var(--sevs-navy)] px-4 py-2.5 text-sm font-bold text-white hover:bg-[var(--sevs-navy-hover)]"
+          >
+            + New Election
+          </Link>
+          <ElectionManagementTable />
+        </div>
+      </>
+    );
+  }
+
+  const elections = getMemberVisibleElections()
+    .map((e) => ({ election: e, lifecycle: getComputedLifecycleStatus(e) }))
+    .filter(({ lifecycle }) => matchesTab(lifecycle, tab))
+    .map(({ election }) => election);
 
   return (
     <>

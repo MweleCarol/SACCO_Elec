@@ -98,3 +98,13 @@ export function getMemberById(id: string): Member | undefined {
 export function getMembersByRole(role: UserRole): Member[] {
   return mockUsers.filter((u) => u.role === role);
 }
+
+export function searchMembers(query: string, role?: UserRole, status?: MemberStatus): Member[] {
+  const q = query.trim().toLowerCase();
+  return mockUsers.filter((m) => {
+    const matchesQuery = !q || m.name.toLowerCase().includes(q) || m.email.toLowerCase().includes(q);
+    const matchesRole = !role || m.role === role;
+    const matchesStatus = !status || (m.status ?? "ACTIVE") === status;
+    return matchesQuery && matchesRole && matchesStatus;
+  });
+}

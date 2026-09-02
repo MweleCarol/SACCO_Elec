@@ -1,10 +1,20 @@
 export type BallotStatus = "SUBMITTED" | "CONFIRMED";
 
-export interface BallotRecord {
+/** Identity-linked: proves a member voted, without revealing what they chose. */
+export interface VoterParticipation {
   id: string;
-  electionId: string;
   memberId: string;
-  votedAt: string; // ISO date string
+  electionId: string;
+  votedAt: string;
   status: BallotStatus;
-  receiptHash: string; // mock tamper-evident receipt, not the vote itself
+  receiptHash: string; // given to the voter; does not encode their selections
+}
+
+/** Anonymous: the actual selections, deliberately carrying no member reference. */
+export interface AnonymousBallot {
+  id: string;
+  ballotReference: string; // matches VoterParticipation.receiptHash conceptually, not literally joinable to memberId
+  electionId: string;
+  selections: Record<string, string>; // positionId -> candidateId
+  castAt: string;
 }

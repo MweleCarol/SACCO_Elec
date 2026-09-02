@@ -7,9 +7,9 @@ import { Check } from "lucide-react";
 import { useCurrentMember } from "@/hooks/useCurrentMember";
 import { Topbar } from "@/components/layout/Topbar";
 import { Button } from "@/components/ui/button";
-import { mockElections } from "@/services/mock/elections";
+import { mockElections, getComputedLifecycleStatus } from "@/services/mock/elections";
 import { getApprovedCandidatesByElection } from "@/services/mock/candidates";
-import { hasVotedInElection, mockBallots } from "@/services/mock/ballots";
+import { hasVotedInElection, castVote } from "@/services/mock/ballots";
 
 export default function VotePage() {
   const { electionId } = useParams<{ electionId: string }>();
@@ -18,6 +18,7 @@ export default function VotePage() {
   const [selections, setSelections] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [receiptCode, setReceiptCode] = useState("");
 
   if (isLoading) return null;
 
@@ -45,7 +46,7 @@ export default function VotePage() {
     );
   }
 
-  if (election.status !== "ACTIVE") {
+  if (getComputedLifecycleStatus(election) !== "ACTIVE") {
     return (
       <div className="p-8">
         <p className="text-[var(--sevs-text-muted)]">This election is not currently open for voting.</p>
@@ -73,18 +74,15 @@ export default function VotePage() {
 
   function handleSubmit() {
     if (!election || !member) return;
-    
+
     setSubmitting(true);
-    // Mock only — no real backend/crypto module exists yet to cast and store an actual encrypted ballot.
-    mockBallots.push({
-      id: `ballot-${Date.now()}`,
-      electionId: election.id,
-      memberId: member.id,
-      votedAt: new Date().toISOString(),
-      status: "CONFIRMED",
-      receiptHash: `${Date.now().toString(36)}...mock`,
-    });
+    // castVote deliberately writes two unlinked records (participation vs.
+    // anonymous ballot) rather than one combined record — preserves ballot
+    // secrecy per SEVS design. Mock only — no real backend/crypto module.
+    const receipt = castVote(member.id, election.id, selections);
+
     setTimeout(() => {
+      setReceiptCode(receipt);
       setSubmitting(false);
       setSubmitted(true);
     }, 600);
@@ -99,6 +97,9 @@ export default function VotePage() {
         <h2 className="mt-6 text-2xl font-extrabold text-[var(--sevs-navy)]">Thank you for voting!</h2>
         <p className="mt-2 max-w-sm text-sm text-[var(--sevs-text-muted)]">
           Your vote in {election.title} has been recorded securely.
+        </p>
+        <p className="mt-3 font-mono text-xs text-[var(--sevs-text-muted)]">
+          Ballot Reference: {receiptCode}
         </p>
         <Button onClick={() => router.push("/my-voting-activity")} className="mt-6 w-auto px-8">
           View My Voting Activity

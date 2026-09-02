@@ -1,14 +1,5 @@
-// types/election.ts
-
-export type ElectionStatus =
-  | "DRAFT"
-  | "PENDING_APPROVAL"
-  | "APPROVED"
-  | "SCHEDULED"
-  | "ACTIVE"
-  | "CLOSED"
-  | "RESULTS_PUBLISHED"
-  | "ARCHIVED";
+export type ApprovalStatus = "DRAFT" | "PENDING_APPROVAL" | "APPROVED";
+export type LifecycleStatus = "NOT_SCHEDULED" | "SCHEDULED" | "ACTIVE" | "CLOSED" | "RESULTS_PUBLISHED" | "ARCHIVED";
 
 export interface Position {
   id: string;
@@ -21,21 +12,29 @@ export interface Election {
   id: string;
   title: string;
   description: string;
-  status: ElectionStatus;
-  startDate: string; // ISO date string
-  endDate: string; // ISO date string
+  approvalStatus: ApprovalStatus;
+  lifecycleStatus: LifecycleStatus;
+  startDate: string;
+  endDate: string;
   totalEligibleVoters: number;
   totalVotesCast: number;
   positions: Position[];
-  createdBy: string; // Member.id
-  approvalStatus: "PENDING" | "APPROVED" | "REJECTED";
-  approvalsRequired: number;
-  approvalsReceived: number;
+  createdBy: string;
 }
+export type DisplayStatus =
+  | "Draft" | "Pending Approval" | "Approved"
+  | "Scheduled" | "Active" | "Closed" | "Results Published" | "Archived";
 
-export interface DashboardStats {
-  activeElections: number;
-  registeredMembers: number;
-  pendingApprovals: number;
-  systemAlerts: number;
+export function getDisplayStatus(election: Pick<Election, "approvalStatus" | "lifecycleStatus">): DisplayStatus {
+  if (election.approvalStatus === "DRAFT") return "Draft";
+  if (election.approvalStatus === "PENDING_APPROVAL") return "Pending Approval";
+  // approvalStatus === "APPROVED" from here — lifecycle takes over
+  switch (election.lifecycleStatus) {
+    case "SCHEDULED": return "Scheduled";
+    case "ACTIVE": return "Active";
+    case "CLOSED": return "Closed";
+    case "RESULTS_PUBLISHED": return "Results Published";
+    case "ARCHIVED": return "Archived";
+    default: return "Approved"; // APPROVED + NOT_SCHEDULED — authorized but not yet activated
+  }
 }

@@ -3,10 +3,10 @@
 import { useCurrentMember } from "@/hooks/useCurrentMember";
 import { Topbar } from "@/components/layout/Topbar";
 import { VotingActivityRow } from "@/components/voter/VotingActivityRow";
-import { getBallotsByMember } from "@/services/mock/ballots";
+import { getParticipationByMember } from "@/services/mock/ballots";
 import { mockElections } from "@/services/mock/elections";
 
-// Page component to display a logged-in member's voting activity, including a list of ballots and their associated elections.
+// Page component to display a logged-in member's voting activity, including a list of participation records and their associated elections.
 export default function MyVotingActivityPage() {
   const { member, isLoading } = useCurrentMember();
 
@@ -26,7 +26,7 @@ export default function MyVotingActivityPage() {
     );
   }
 
-  const ballots = getBallotsByMember(member.id).sort(
+  const participation = getParticipationByMember(member.id).sort(
     (a, b) => new Date(b.votedAt).getTime() - new Date(a.votedAt).getTime()
   );
 
@@ -35,16 +35,16 @@ export default function MyVotingActivityPage() {
       <Topbar title="My Voting Activity" subtitle="A record of elections you've participated in" />
 
       <div className="space-y-4 p-8">
-        {ballots.length === 0 && (
+        {participation.length === 0 && (
           <p className="text-sm text-[var(--sevs-text-muted)]">
             You haven&apos;t voted in any elections yet.
           </p>
         )}
-        {ballots.map((ballot) => (
+        {participation.map((record) => (
           <VotingActivityRow
-            key={ballot.id}
-            ballot={ballot}
-            election={mockElections.find((e) => e.id === ballot.electionId)}
+            key={record.id}
+            ballot={record}
+            election={mockElections.find((e) => e.id === record.electionId)}
           />
         ))}
       </div>
