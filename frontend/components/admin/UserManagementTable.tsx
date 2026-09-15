@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Search } from "lucide-react";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -26,8 +26,29 @@ export function UserManagementTable() {
   const [query, setQuery] = useState("");
   const [role, setRole] = useState<UserRole | "">("");
   const [status, setStatus] = useState<MemberStatus | "">("");
+  const [canScrollRight, setCanScrollRight] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const results = searchMembers(query, role || undefined, status || undefined);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    function updateScrollState() {
+      if (!el) return;
+      // 1px tolerance for sub-pixel rounding
+      setCanScrollRight(el.scrollWidth - el.clientWidth - el.scrollLeft > 1);
+    }
+
+    updateScrollState();
+    el.addEventListener("scroll", updateScrollState);
+    window.addEventListener("resize", updateScrollState);
+    return () => {
+      el.removeEventListener("scroll", updateScrollState);
+      window.removeEventListener("resize", updateScrollState);
+    };
+  }, [results.length]);
 
   return (
     <div className="rounded-2xl border border-[var(--sevs-border)] bg-white shadow-sm">
@@ -38,13 +59,13 @@ export function UserManagementTable() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search users..."
-            className="w-full rounded-lg border border-[var(--sevs-border)] py-2 pl-9 pr-3 text-sm focus:border-[var(--sevs-navy)] focus:outline-none focus:ring-2 focus:ring-[var(--sevs-navy)]/20"
+            className="w-full rounded-lg border border-[var(--sevs-border)] py-2.5 pl-9 pr-3 text-sm focus:border-[var(--sevs-navy)] focus:outline-none focus:ring-2 focus:ring-[var(--sevs-navy)]/20"
           />
         </div>
         <select
           value={role}
           onChange={(e) => setRole(e.target.value as UserRole | "")}
-          className="rounded-lg border border-[var(--sevs-border)] px-3 py-2 text-sm text-[var(--sevs-text-body)] focus:border-[var(--sevs-navy)] focus:outline-none"
+          className="rounded-lg border border-[var(--sevs-border)] px-3 py-2.5 text-sm text-[var(--sevs-text-body)] focus:border-[var(--sevs-navy)] focus:outline-none"
         >
           {ROLE_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -53,7 +74,7 @@ export function UserManagementTable() {
         <select
           value={status}
           onChange={(e) => setStatus(e.target.value as MemberStatus | "")}
-          className="rounded-lg border border-[var(--sevs-border)] px-3 py-2 text-sm text-[var(--sevs-text-body)] focus:border-[var(--sevs-navy)] focus:outline-none"
+          className="rounded-lg border border-[var(--sevs-border)] px-3 py-2.5 text-sm text-[var(--sevs-text-body)] focus:border-[var(--sevs-navy)] focus:outline-none"
         >
           {STATUS_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -62,43 +83,53 @@ export function UserManagementTable() {
       </div>
 
       {/* horizontal scroll on mobile instead of squeezing columns unreadably (HCI: avoid forced truncation of key data) */}
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[560px] text-left text-sm">
-          <thead>
-            <tr className="border-b border-[var(--sevs-border)] text-xs uppercase tracking-wide text-[var(--sevs-text-muted)]">
-              <th className="px-5 py-3 font-semibold">Name</th>
-              <th className="px-5 py-3 font-semibold">Role</th>
-              <th className="px-5 py-3 font-semibold">Status</th>
-              <th className="px-5 py-3 font-semibold">Action</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[var(--sevs-border)]">
-            {results.map((m) => (
-              <tr key={m.id}>
-                <td className="px-5 py-3">
-                  <p className="font-medium text-[var(--sevs-navy)]">{m.name}</p>
-                  <p className="text-xs text-[var(--sevs-text-muted)]">{m.email}</p>
-                </td>
-                <td className="px-5 py-3 text-[var(--sevs-text-body)]">{formatRoleLabel(m.role)}</td>
-                <td className="px-5 py-3">
-                  <StatusBadge status={m.status ?? "ACTIVE"} />
-                </td>
-                <td className="px-5 py-3">
-                  <Link href={`/users/${m.id}`} className="font-bold text-[var(--sevs-navy)] hover:underline">
-                    View
-                  </Link>
-                </td>
+      <div className="relative">
+        <div ref={scrollRef} className="overflow-x-auto">
+          <table className="w-full min-w-[560px] text-left text-sm">
+            <thead>
+              <tr className="border-b border-[var(--sevs-border)] text-xs uppercase tracking-wide text-[var(--sevs-text-muted)]">
+                <th className="px-5 py-3 font-semibold">Name</th>
+                <th className="px-5 py-3 font-semibold">Role</th>
+                <th className="px-5 py-3 font-semibold">Status</th>
+                <th className="px-5 py-3 font-semibold">Action</th>
               </tr>
-            ))}
-            {results.length === 0 && (
-              <tr>
-                <td colSpan={4} className="px-5 py-6 text-center text-sm text-[var(--sevs-text-muted)]">
-                  No users match your filters.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-[var(--sevs-border)]">
+              {results.map((m) => (
+                <tr key={m.id}>
+                  <td className="px-5 py-3">
+                    <p className="font-medium text-[var(--sevs-navy)]">{m.name}</p>
+                    <p className="text-xs text-[var(--sevs-text-muted)]">{m.email}</p>
+                  </td>
+                  <td className="px-5 py-3 text-[var(--sevs-text-body)]">{formatRoleLabel(m.role)}</td>
+                  <td className="px-5 py-3">
+                    <StatusBadge status={m.status ?? "ACTIVE"} />
+                  </td>
+                  <td className="px-5 py-3">
+                    <Link href={`/users/${m.id}`} className="font-bold text-[var(--sevs-navy)] hover:underline">
+                      View
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+              {results.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="px-5 py-6 text-center text-sm text-[var(--sevs-text-muted)]">
+                    No users match your filters.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Fade hint: only visible when there's more content to scroll to */}
+        {canScrollRight && (
+          <div
+            className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-white to-transparent"
+            aria-hidden="true"
+          />
+        )}
       </div>
     </div>
   );

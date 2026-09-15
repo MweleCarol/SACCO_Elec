@@ -1,11 +1,9 @@
 "use client";
 
 import { Topbar } from "@/components/layout/Topbar";
-import { RiskGauge } from "@/components/officer/RiskGauge";
-import { AnomalyCard } from "@/components/officer/AnomalyCard";
 import { useCurrentMember } from "@/hooks/useCurrentMember";
-import { mockRiskAssessment, mockAnomalies } from "@/services/mock/ai-governance";
-import { formatRoleLabel } from "@/lib/format";
+import { OfficerCopilotView } from "@/components/copilot/OfficerCopilotView";
+import { AdminCopilotView } from "@/components/copilot/AdminCopilotView";
 
 export default function AiGovernancePage() {
   const { member, isLoading } = useCurrentMember();
@@ -21,43 +19,15 @@ export default function AiGovernancePage() {
 
   return (
     <>
-      <Topbar title="AI Governance" subtitle="Explainable, advisory insights — human decisions remain final" />
+      <Topbar title="AI Copilot" subtitle="AI governance assistant for election management" />
 
-      <div className="space-y-6 p-4 sm:p-8">
-        {member.role === "AUDITOR" && (
-          <p className="rounded-lg bg-blue-50 px-4 py-2.5 text-xs font-medium text-blue-700">
-            {formatRoleLabel(member.role)} access is read-only.
-          </p>
-        )}
-
-        <div className="rounded-2xl border border-[var(--sevs-border)] bg-white p-5 shadow-sm sm:p-6">
-          <RiskGauge level={mockRiskAssessment.level} />
-          <p className="mt-4 text-sm text-[var(--sevs-text-body)]">{mockRiskAssessment.summary}</p>
-          <div className="mt-4">
-            <p className="text-xs font-bold uppercase tracking-wide text-[var(--sevs-text-muted)]">Contributing Factors</p>
-            <ul className="mt-2 list-disc space-y-1 pl-4 text-sm text-[var(--sevs-text-body)]">
-              {mockRiskAssessment.factors.map((f, i) => <li key={i}>{f}</li>)}
-            </ul>
-          </div>
-        </div>
-
-        <div>
-          <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-[var(--sevs-text-muted)]">
-            Detected Anomalies ({mockAnomalies.length})
-          </h3>
-          <div className="space-y-3">
-            {mockAnomalies.length === 0 ? (
-              <p className="text-sm text-[var(--sevs-text-muted)]">No anomalies detected.</p>
-            ) : (
-              mockAnomalies.map((a) => <AnomalyCard key={a.id} anomaly={a} />)
-            )}
-          </div>
-        </div>
-
-        <p className="text-xs text-[var(--sevs-text-muted)]">
-          AI Governance analyzes permitted operational and audit data only. It cannot access ballot contents, modify votes, or determine election outcomes — all recommendations require human review.
-        </p>
+      <div className="border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-center text-xs font-semibold text-amber-800 sm:px-8">
+        AI provides insights and recommendations. Humans make the decisions.
       </div>
+
+      {member.role === "ELECTION_OFFICER" && <OfficerCopilotView />}
+      {member.role === "ADMINISTRATOR" && <AdminCopilotView />}
+      {member.role === "AUDITOR" && <AdminCopilotView isReadOnly />}
     </>
   );
 }
