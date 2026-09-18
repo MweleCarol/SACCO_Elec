@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { Member } from "@/types/member";
 import { StatCard } from "@/components/dashboard/StatCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { mockElections } from "@/services/mock/elections";
+import { mockElections, getComputedLifecycleStatus, getDisplayStatus } from "@/services/mock/elections";
 import {
   getAuditEventCountForElection,
   getRecentAuditLogs,
@@ -13,16 +13,16 @@ import { getReportsCount } from "@/services/mock/reports";
 import { mockAnomalies } from "@/services/mock/ai-governance";
 import { ClipboardList, ScrollText, AlertTriangle, FileText } from "lucide-react";
 
-// Props for the AuditorDashboard component
 interface AuditorDashboardProps {
   user: Member;
 }
 
-const REVIEWABLE_STATUSES = ["CLOSED", "RESULTS_PUBLISHED", "ARCHIVED", "ACTIVE"];
+const REVIEWABLE_LIFECYCLE_STATUSES = ["CLOSED", "RESULTS_PUBLISHED", "ARCHIVED", "ACTIVE"];
 
-// AuditorDashboard component that displays an overview of elections, audit events, and reports for auditors.
 export function AuditorDashboard({ user }: AuditorDashboardProps) {
-  const electionsReviewed = mockElections.filter((e) => REVIEWABLE_STATUSES.includes(e.status)).length;
+  const electionsReviewed = mockElections.filter((e) =>
+    REVIEWABLE_LIFECYCLE_STATUSES.includes(getComputedLifecycleStatus(e))
+  ).length;
   const highRiskLogs = getHighRiskAuditLogs();
   const recentLogs = getRecentAuditLogs(4);
 
@@ -51,7 +51,7 @@ export function AuditorDashboard({ user }: AuditorDashboardProps) {
               <tr key={election.id}>
                 <td className="py-3 font-medium text-[var(--sevs-navy)]">{election.title}</td>
                 <td className="py-3">
-                  <StatusBadge status={election.status} />
+                  <StatusBadge status={getDisplayStatus(election)} />
                 </td>
                 <td className="py-3 text-[var(--sevs-text-body)]">{getAuditEventCountForElection(election.id)}</td>
                 <td className="py-3">

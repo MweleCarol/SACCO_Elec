@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState } from "react";
@@ -66,7 +65,7 @@ export default function CandidateApplicationPage() {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!member || !canSubmit) return;
+    if (!member || !election || !canSubmit) return; // re-narrows for TS inside this closure
     setSubmitting(true);
     submitCandidateApplication({
       memberId: member.id,

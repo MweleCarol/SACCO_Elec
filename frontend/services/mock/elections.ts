@@ -8,7 +8,7 @@ export const mockElections: Election[] = [
     approvalStatus: "APPROVED",
     lifecycleStatus: "ACTIVE",
     startDate: "2026-08-28T08:00:00Z",
-    endDate: "2026-09-08T21:00:00Z", // extended past "today" (Sep 2) so it's genuinely ACTIVE for testing
+    endDate: "2026-09-08T21:00:00Z",
     totalEligibleVoters: 1756,
     totalVotesCast: 1054,
     positions: [
@@ -25,7 +25,7 @@ export const mockElections: Election[] = [
     approvalStatus: "APPROVED",
     lifecycleStatus: "ACTIVE",
     startDate: "2026-08-24T08:00:00Z",
-    endDate: "2026-09-08T21:00:00Z", // also extended so it stays ACTIVE
+    endDate: "2026-09-08T21:00:00Z",
     totalEligibleVoters: 640,
     totalVotesCast: 384,
     positions: [
@@ -35,16 +35,18 @@ export const mockElections: Election[] = [
   },
   {
     id: "el-2025-agm",
-    title: "2025 SACCO Annual General Meeting Election",
-    description: "Annual leadership election held during the 2025 AGM.",
+    title: "SACCO AGM 2026",
+    description: "Annual General Meeting election for Chairperson, Treasurer, and Secretary.",
     approvalStatus: "APPROVED",
     lifecycleStatus: "RESULTS_PUBLISHED",
-    startDate: "2025-11-10T08:00:00Z",
-    endDate: "2025-11-10T18:00:00Z",
-    totalEligibleVoters: 1180,
-    totalVotesCast: 812,
+    startDate: "2026-09-02T08:00:00Z",
+    endDate: "2026-09-02T18:00:00Z",
+    totalEligibleVoters: 1250,
+    totalVotesCast: 875,
     positions: [
       { id: "pos-agm-chair", electionId: "el-2025-agm", title: "Chairperson", seats: 1 },
+      { id: "pos-agm-treasurer", electionId: "el-2025-agm", title: "Treasurer", seats: 1 },
+      { id: "pos-agm-secretary", electionId: "el-2025-agm", title: "Secretary", seats: 1 },
     ],
     createdBy: "usr-admin-001",
   },
@@ -54,7 +56,7 @@ export const mockElections: Election[] = [
     description: "A by-election to fill the vacant Treasurer position ahead of the next AGM.",
     approvalStatus: "APPROVED",
     lifecycleStatus: "SCHEDULED",
-    startDate: "2026-09-20T08:00:00Z", // future — genuinely SCHEDULED, nominations open now
+    startDate: "2026-09-20T08:00:00Z",
     endDate: "2026-09-22T21:00:00Z",
     totalEligibleVoters: 0,
     totalVotesCast: 0,

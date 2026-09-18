@@ -36,6 +36,14 @@ const STATUS_TONE: Record<string, BadgeTone> = {
   SUCCESSFUL: "green",
   FAILED: "red",
 
+  // audit log result + actor role (Phase 3/4 additions)
+  SUCCESS: "green",
+  MEMBER: "blue",
+  ELECTION_OFFICER: "blue",
+  ADMINISTRATOR: "blue",
+  AUDITOR: "blue",
+  SYSTEM: "gray",
+
   // DisplayStatus values from getDisplayStatus() — election badges
   Draft: "gray",
   "Pending Approval": "amber",
@@ -52,10 +60,20 @@ interface StatusBadgeProps {
 }
 
 export function StatusBadge({ status }: StatusBadgeProps) {
+  if (!status) return null;
+
   const tone = STATUS_TONE[status] ?? "gray";
-  const label = status.includes("_") ? status.replace(/_/g, " ").toLowerCase() : status;
+  const label = status.includes("_")
+    ? status.replace(/_/g, " ").toLowerCase()
+    : status;
+
   return (
-    <span className={clsx("inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold capitalize", TONE_STYLES[tone])}>
+    <span
+      className={clsx(
+        "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold capitalize",
+        TONE_STYLES[tone],
+      )}
+    >
       {label}
     </span>
   );

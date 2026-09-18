@@ -39,7 +39,7 @@ export default function DashboardPage() {
 
   return (
     <>
-      <Topbar title="Dashboard" subtitle={subtitle} notificationCount={3} />
+      <Topbar title="Dashboard" subtitle={subtitle} />
       {member.role === "MEMBER" && <VoterDashboard user={member} />}
       {member.role === "ELECTION_OFFICER" && <ElectionOfficerDashboard user={member} />}
       {member.role === "ADMINISTRATOR" && <ElectionAdministratorDashboard user={member} />}

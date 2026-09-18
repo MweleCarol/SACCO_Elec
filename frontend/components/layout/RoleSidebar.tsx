@@ -3,8 +3,22 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  Home, Vote, UserCircle, Users, CheckSquare, ScrollText, BarChart3,
-  Sparkles, RefreshCw, Settings, ClipboardList, Bell, LogOut, ShieldCheck,
+  Home,
+  Vote,
+  UserCircle,
+  Users,
+  CheckSquare,
+  ScrollText,
+  BarChart3,
+  Sparkles,
+  RefreshCw,
+  Settings,
+  ClipboardList,
+  Bell,
+  LogOut,
+  ShieldCheck,
+  FileBarChart,
+  Trophy,
 } from "lucide-react";
 import { useCurrentMember } from "@/hooks/useCurrentMember";
 import { clearSession } from "@/lib/session";
@@ -18,7 +32,10 @@ export interface NavItem {
   primary?: boolean; // shown in mobile bottom bar; rest live under "More"
 }
 
-export const NAV_CONFIG: Record<UserRole, { portalLabel: string; items: NavItem[] }> = {
+export const NAV_CONFIG: Record<
+  UserRole,
+  { portalLabel: string; items: NavItem[] }
+> = {
   MEMBER: {
     portalLabel: "Member Portal",
     items: [
@@ -26,11 +43,15 @@ export const NAV_CONFIG: Record<UserRole, { portalLabel: string; items: NavItem[
       { href: "/elections", label: "Elections", icon: Vote, primary: true },
       { href: "/candidates", label: "Candidates", icon: Users, primary: true },
       { href: "/my-candidacy", label: "My Candidacy", icon: UserCircle },
-      { href: "/my-voting-activity", label: "Activity", icon: ClipboardList, primary: true },
+      {
+        href: "/my-voting-activity",
+        label: "Activity",
+        icon: ClipboardList,
+        primary: true,
+      },
       { href: "/results", label: "Results", icon: BarChart3 },
       { href: "/notifications", label: "Notifications", icon: Bell },
       { href: "/profile", label: "Profile", icon: Settings },
-       
     ],
   },
   ELECTION_OFFICER: {
@@ -38,10 +59,21 @@ export const NAV_CONFIG: Record<UserRole, { portalLabel: string; items: NavItem[
     items: [
       { href: "/dashboard", label: "Dashboard", icon: Home, primary: true },
       { href: "/elections", label: "Elections", icon: Vote, primary: true },
-      { href: "/candidates", label: "Candidates", icon: UserCircle, primary: true },
-      { href: "/approvals", label: "Approvals", icon: CheckSquare, primary: true },
+      {
+        href: "/candidates",
+        label: "Candidates",
+        icon: UserCircle,
+        primary: true,
+      },
+      {
+        href: "/approvals",
+        label: "Approvals",
+        icon: CheckSquare,
+        primary: true,
+      },
       { href: "/audit-logs", label: "Audit Logs", icon: ScrollText },
-      { href: "/reports", label: "Reports", icon: BarChart3 },
+      { href: "/reports", label: "Reports", icon: FileBarChart },
+      { href: "/results", label: "Results", icon: Trophy },
       { href: "/ai-governance", label: "AI Insights", icon: Sparkles },
     ],
   },
@@ -51,10 +83,16 @@ export const NAV_CONFIG: Record<UserRole, { portalLabel: string; items: NavItem[
       { href: "/dashboard", label: "Dashboard", icon: Home, primary: true },
       { href: "/users", label: "Users", icon: Users, primary: true },
       { href: "/elections", label: "Elections", icon: Vote, primary: true },
-      { href: "/approvals", label: "Approvals", icon: CheckSquare, primary: true },
+      {
+        href: "/approvals",
+        label: "Approvals",
+        icon: CheckSquare,
+        primary: true,
+      },
       { href: "/membership-sync", label: "Membership", icon: RefreshCw },
       { href: "/audit-logs", label: "Audit Logs", icon: ScrollText },
-      { href: "/reports", label: "Reports", icon: BarChart3 },
+      { href: "/reports", label: "Reports", icon: FileBarChart },
+      { href: "/results", label: "Results", icon: Trophy },
       { href: "/settings", label: "Settings", icon: Settings },
       { href: "/ai-governance", label: "AI Monitor", icon: Sparkles },
     ],
@@ -64,8 +102,14 @@ export const NAV_CONFIG: Record<UserRole, { portalLabel: string; items: NavItem[
     items: [
       { href: "/dashboard", label: "Dashboard", icon: Home, primary: true },
       { href: "/elections", label: "Elections", icon: Vote, primary: true },
-      { href: "/audit-logs", label: "Audit Logs", icon: ScrollText, primary: true },
-      { href: "/reports", label: "Reports", icon: BarChart3, primary: true },
+      {
+        href: "/audit-logs",
+        label: "Audit Logs",
+        icon: ScrollText,
+        primary: true,
+      },
+      { href: "/reports", label: "Reports", icon: FileBarChart, primary: true },
+      { href: "/results", label: "Results", icon: Trophy },
       { href: "/ai-governance", label: "AI Insights", icon: Sparkles },
     ],
   },
@@ -106,7 +150,9 @@ export function RoleSidebar({ role }: RoleSidebarProps) {
               key={href}
               href={href}
               className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
-                isActive ? "bg-white/10 text-white" : "text-white/70 hover:bg-white/5 hover:text-white"
+                isActive
+                  ? "bg-white/10 text-white"
+                  : "text-white/70 hover:bg-white/5 hover:text-white"
               }`}
             >
               <Icon className="h-4 w-4" />

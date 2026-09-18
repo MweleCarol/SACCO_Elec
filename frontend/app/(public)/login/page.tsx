@@ -11,6 +11,7 @@ import { AuthShell } from "@/components/auth/AuthShell";
 import { FormField } from "@/components/ui/FormField";
 import { PasswordField } from "@/components/ui/PasswordField";
 import { Button } from "@/components/ui/button";
+import { setCurrentMemberId } from "@/lib/session";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -34,7 +35,7 @@ export default function LoginPage() {
       return;
     }
 
-    document.cookie = `sevs_uid=${result.user!.id}; path=/; max-age=86400`;
+    setCurrentMemberId(result.user!.id);
     router.push("/dashboard");
   }
 
@@ -46,7 +47,10 @@ export default function LoginPage() {
       bottomLink={
         <span className="text-[var(--sevs-text-muted)]">
           Don&apos;t have an account?{" "}
-          <Link href="/register" className="font-bold text-[var(--sevs-navy)] hover:underline">
+          <Link
+            href="/register"
+            className="font-bold text-[var(--sevs-navy)] hover:underline"
+          >
             Register
           </Link>
         </span>
@@ -68,13 +72,18 @@ export default function LoginPage() {
         />
 
         <div className="mb-4 text-right">
-          <Link href="/forgot-password" className="text-sm font-bold text-[var(--sevs-navy)] hover:underline">
+          <Link
+            href="/forgot-password"
+            className="text-sm font-bold text-[var(--sevs-navy)] hover:underline"
+          >
             Forgot password?
           </Link>
         </div>
 
         {serverError && (
-          <p className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{serverError}</p>
+          <p className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
+            {serverError}
+          </p>
         )}
 
         <Button type="submit" isLoading={isSubmitting}>

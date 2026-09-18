@@ -1,13 +1,24 @@
 "use client";
 
-// This file contains functions to manage the session cookie (small piece of data that a 
-// website stores in your browser to remember you while you move around the website during one visit/session.) for the current user.
+const SESSION_EVENT = "sevs-session-changed";
+
 export function getCurrentMemberId(): string | null {
   if (typeof document === "undefined") return null;
   const match = document.cookie.match(/(?:^|; )sevs_uid=([^;]*)/);
   return match ? decodeURIComponent(match[1]) : null;
 }
 
+export function setCurrentMemberId(id: string): void {
+  document.cookie = `sevs_uid=${encodeURIComponent(id)}; path=/; max-age=86400`;
+  window.dispatchEvent(new Event(SESSION_EVENT));
+}
+
 export function clearSession(): void {
   document.cookie = "sevs_uid=; path=/; max-age=0";
+  window.dispatchEvent(new Event(SESSION_EVENT));
+}
+
+export function onSessionChange(callback: () => void): () => void {
+  window.addEventListener(SESSION_EVENT, callback);
+  return () => window.removeEventListener(SESSION_EVENT, callback);
 }
