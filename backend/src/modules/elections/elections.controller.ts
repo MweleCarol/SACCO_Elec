@@ -45,9 +45,10 @@ export async function reviewApproval(req: Request, res: Response): Promise<void>
 }
 
 export async function activate(req: Request, res: Response): Promise<void> {
-  const election = await electionsService.activateElection(req.user!.id, idParam(res));
-  sendSuccess(res, election, "Election activated.");
+  const result = await electionsService.activateElection(req.user!.id, idParam(res));
+  sendSuccess(res, result, "Activation requested — awaiting officer approval.");
 }
+// same pattern for cancel and reschedule — just update the message text
 
 export async function close(req: Request, res: Response): Promise<void> {
   const election = await electionsService.closeElection(req.user!.id, idParam(res));

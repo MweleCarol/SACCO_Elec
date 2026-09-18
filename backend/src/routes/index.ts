@@ -5,6 +5,7 @@ import membershipSyncRoutes from "../modules/membership-sync/membership-sync.rou
 import electionsRoutes from "../modules/elections/elections.routes";
 import { nestedRouter as positionsNestedRoutes, standaloneRouter as positionsStandaloneRoutes } from "../modules/positions/positions.routes";
 import { nestedRouter as candidatesNestedRoutes, standaloneRouter as candidatesStandaloneRoutes } from "../modules/candidates/candidates.routes";
+import approvalsRoutes from "../modules/approvals/approvals.routes";
 import { router as votingRoutes } from "../modules/voting/voting.routes";
 
 const router = Router();
@@ -18,5 +19,6 @@ router.use("/positions", positionsStandaloneRoutes);
 router.use("/elections/:electionId/candidates", candidatesNestedRoutes);
 router.use("/candidates", candidatesStandaloneRoutes);
 router.use("/elections/:electionId", votingRoutes);
+router.use("/approval-requests", approvalsRoutes);
 
 export default router;

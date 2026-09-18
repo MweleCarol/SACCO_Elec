@@ -1,8 +1,14 @@
 import { Request, Response } from "express";
 import { sendSuccess } from "../../shared/responses/ApiResponse";
 import * as authService from "./auth.service";
-import { RegisterInput, LoginInput, VerifyMfaInput, MfaConfirmInput, ChangePasswordInput } from "./auth.schema";
-import { env, isProduction } from "../../config/env";
+import {
+  RegisterInput,
+  LoginInput,
+  VerifyMfaInput,
+  MfaConfirmInput,
+  ChangePasswordInput,
+} from "./auth.schema";
+import { isProduction } from "../../config/env";
 import { AuthError } from "../../shared/errors/AuthError";
 
 const REFRESH_COOKIE_NAME = "refreshToken";
@@ -52,7 +58,10 @@ export async function login(req: Request, res: Response): Promise<void> {
 
 export async function verifyMfa(req: Request, res: Response): Promise<void> {
   const body = res.locals.validated?.body as VerifyMfaInput;
-  const { session, rawRefreshToken } = await authService.verifyMfa(body, req.ip);
+  const { session, rawRefreshToken } = await authService.verifyMfa(
+    body,
+    req.ip,
+  );
 
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
   setRefreshCookie(res, rawRefreshToken, expiresAt);
@@ -66,7 +75,10 @@ export async function refresh(req: Request, res: Response): Promise<void> {
     throw new AuthError("No active session found.");
   }
 
-  const { accessToken, newRawRefreshToken } = await authService.refresh(rawRefreshToken, req.ip);
+  const { accessToken, newRawRefreshToken } = await authService.refresh(
+    rawRefreshToken,
+    req.ip,
+  );
 
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
   setRefreshCookie(res, newRawRefreshToken, expiresAt);
@@ -89,7 +101,11 @@ export async function me(req: Request, res: Response): Promise<void> {
 
 export async function enrollMfa(req: Request, res: Response): Promise<void> {
   const result = await authService.enrollMfa(req.user!.id);
-  sendSuccess(res, result, "Scan this QR code with your authenticator app, then confirm with a code.");
+  sendSuccess(
+    res,
+    result,
+    "Scan this QR code with your authenticator app, then confirm with a code.",
+  );
 }
 
 export async function confirmMfa(req: Request, res: Response): Promise<void> {
@@ -98,8 +114,15 @@ export async function confirmMfa(req: Request, res: Response): Promise<void> {
   sendSuccess(res, null, "MFA enabled successfully.");
 }
 
-export async function changePassword(req: Request, res: Response): Promise<void> {
+export async function changePassword(
+  req: Request,
+  res: Response,
+): Promise<void> {
   const body = res.locals.validated?.body as ChangePasswordInput;
   await authService.changePassword(req.user!.id, body);
-  sendSuccess(res, null, "Password changed. Please log in again on other devices.");
+  sendSuccess(
+    res,
+    null,
+    "Password changed. Please log in again on other devices.",
+  );
 }

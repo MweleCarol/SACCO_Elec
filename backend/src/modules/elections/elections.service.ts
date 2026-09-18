@@ -1,4 +1,4 @@
-import { Election } from "@prisma/client";
+import { Election, Prisma } from "@prisma/client";
 import { assertValidTransition, InvalidTransitionError } from "../../shared/constants/election-transitions";
 import { ForbiddenError } from "../../shared/errors/ForbiddenError";
 import { ConflictError } from "../../shared/errors/ConflictError";
@@ -9,6 +9,15 @@ import { toElectionDto, ElectionDto, PaginatedElectionsDto } from "./elections.d
 import {
   CreateElectionInput, UpdateElectionInput, RescheduleElectionInput, ReviewApprovalInput, ListElectionsQuery,
 } from "./elections.schema";
+// Circular import note: approvals.service.ts imports executeActivation/
+// executeCancellation/executeReschedule from this file, and this file
+// imports requestApproval from approvals.service.ts. This is safe here
+// specifically because neither side calls the other's export at module-
+// load time — only inside async function bodies invoked later, by which
+// point both modules have finished initializing. If this ever becomes
+// fragile, the fix is moving the three execute* functions to their own
+// file rather than restructuring the approval flow itself.
+import { requestApproval } from "../approvals/approvals.service";
 
 async function getElectionOrThrow(id: string): Promise<Election> {
   const election = await electionsRepository.findElectionById(id);
@@ -94,14 +103,10 @@ export async function submitForApproval(officerId: string, electionId: string): 
   return toElectionDto(updated);
 }
 
-// --- TEMPORARY STOPGAP — replace in Phase 7 ---
-// Real DAT requires N-of-M distinct officers approving via
-// ApprovalRequest/ApprovalDecision (LLD §11). Until that module exists,
-// a single ELECTION_ADMINISTRATOR can approve/reject directly so the rest
-// of the election lifecycle (activate, candidates, voting) can be built
-// and tested without waiting on Phase 7. Every call site of this function
-// is annotated the same way, so `grep`-ing "TEMPORARY STOPGAP" finds every
-// place that needs rewiring once real DAT lands.
+// Single-administrator editorial review of the election plan itself
+// (LLD §8's Draft -> Pending Approval -> Approved step) — distinct from
+// DAT, which gates the three actions below. This is NOT a stopgap; it's
+// staying as single-reviewer by design, per the Phase 7 discussion.
 export async function reviewApproval(
   adminId: string, electionId: string, input: ReviewApprovalInput
 ): Promise<ElectionDto> {
@@ -118,28 +123,7 @@ export async function reviewApproval(
     actorId: adminId,
     action: input.decision === "APPROVE" ? "ELECTION_APPROVED" : "ELECTION_REJECTED",
     resourceType: "Election", resourceId: electionId, electionId, outcome: "SUCCESS",
-    metadata: { comment: input.comment, stopgap: "single_admin_review_pending_phase_7_dat" },
-  });
-
-  return toElectionDto(updated);
-}
-// --- END TEMPORARY STOPGAP ---
-
-export async function activateElection(officerId: string, electionId: string): Promise<ElectionDto> {
-  const election = await getElectionOrThrow(electionId);
-
-  try {
-    assertValidTransition(election.status, "ACTIVE");
-  } catch (err) {
-    if (err instanceof InvalidTransitionError) throw new ConflictError(err.message);
-    throw err;
-  }
-
-  const updated = await electionsRepository.setElectionStatus(electionId, "ACTIVE", officerId, "activatedAt");
-
-  await writeAuditLog({
-    actorId: officerId, action: "ELECTION_ACTIVATED", resourceType: "Election",
-    resourceId: electionId, electionId, outcome: "SUCCESS",
+    metadata: { comment: input.comment },
   });
 
   return toElectionDto(updated);
@@ -165,62 +149,81 @@ export async function closeElection(officerId: string, electionId: string): Prom
   return toElectionDto(updated);
 }
 
-// Cancellation uses the same temporary stopgap as approval — an
-// ELECTION_ADMINISTRATOR can cancel directly for now, real DAT quorum
-// comes in Phase 7.
-export async function cancelElection(
-  adminId: string, electionId: string, reason: string
-): Promise<ElectionDto> {
+// --- These three REQUEST DAT approval; they no longer transition the election directly ---
+
+export async function activateElection(officerId: string, electionId: string) {
   const election = await getElectionOrThrow(electionId);
+  assertValidTransition(election.status, "ACTIVE");
 
-  try {
-    assertValidTransition(election.status, "ARCHIVED");
-  } catch (err) {
-    if (err instanceof InvalidTransitionError) throw new ConflictError(err.message);
-    throw err;
-  }
-
-  const updated = await electionsRepository.setElectionStatus(electionId, "ARCHIVED", adminId, "archivedAt");
-
-  await writeAuditLog({
-    actorId: adminId, action: "ELECTION_CANCELLED", resourceType: "Election",
-    resourceId: electionId, electionId, outcome: "SUCCESS",
-    metadata: { reason, stopgap: "single_admin_review_pending_phase_7_dat" },
+  return requestApproval({
+    actionType: "ELECTION_ACTIVATION",
+    electionId,
+    requestedById: officerId,
+    requiredApprovals: election.requiredApprovals,
   });
-
-  return toElectionDto(updated);
 }
 
-export async function rescheduleElection(
-  officerId: string, electionId: string, input: RescheduleElectionInput
-): Promise<ElectionDto> {
+export async function cancelElection(adminId: string, electionId: string, reason: string) {
   const election = await getElectionOrThrow(electionId);
+  assertValidTransition(election.status, "ARCHIVED");
 
+  return requestApproval({
+    actionType: "ELECTION_CANCELLATION",
+    electionId,
+    requestedById: adminId,
+    requiredApprovals: election.requiredApprovals,
+    payload: { reason },
+  });
+}
+
+export async function rescheduleElection(officerId: string, electionId: string, input: RescheduleElectionInput) {
+  const election = await getElectionOrThrow(electionId);
   if (!["DRAFT", "APPROVED", "SCHEDULED"].includes(election.status)) {
     throw new ForbiddenError("This election can no longer be rescheduled.");
   }
 
-  // Changing dates on an already-APPROVED election is a materially
-  // different election than what got approved — sending it back to
-  // PENDING_APPROVAL forces a fresh review rather than letting a
-  // schedule change slip through under an old approval.
-  const requiresReapproval = election.status === "APPROVED" || election.status === "SCHEDULED";
-
-  const updated = await electionsRepository.updateElection(
+  return requestApproval({
+    actionType: "ELECTION_RESCHEDULE",
     electionId,
-    { startDate: input.startDate, endDate: input.endDate },
-    officerId
-  );
+    requestedById: officerId,
+    requiredApprovals: election.requiredApprovals,
+    payload: { startDate: input.startDate.toISOString(), endDate: input.endDate.toISOString() },
+  });
+}
 
-  const final = requiresReapproval
-    ? await electionsRepository.setElectionStatus(electionId, "PENDING_APPROVAL", officerId)
-    : updated;
+// --- These three EXECUTE the actual transition, called only by approvals.service after quorum ---
 
+export async function executeActivation(electionId: string, officerId: string, tx: Prisma.TransactionClient) {
+  await tx.election.update({
+    where: { id: electionId }, data: { status: "ACTIVE", activatedAt: new Date(), updatedById: officerId },
+  });
+  await writeAuditLog({
+    actorId: officerId, action: "ELECTION_ACTIVATED", resourceType: "Election",
+    resourceId: electionId, electionId, outcome: "SUCCESS",
+  });
+}
+
+export async function executeCancellation(
+  electionId: string, adminId: string, reason: string, tx: Prisma.TransactionClient
+) {
+  await tx.election.update({
+    where: { id: electionId }, data: { status: "ARCHIVED", archivedAt: new Date(), updatedById: adminId },
+  });
+  await writeAuditLog({
+    actorId: adminId, action: "ELECTION_CANCELLED", resourceType: "Election",
+    resourceId: electionId, electionId, outcome: "SUCCESS", metadata: { reason },
+  });
+}
+
+export async function executeReschedule(
+  electionId: string, officerId: string, dates: { startDate: string; endDate: string }, tx: Prisma.TransactionClient
+) {
+  await tx.election.update({
+    where: { id: electionId },
+    data: { startDate: new Date(dates.startDate), endDate: new Date(dates.endDate), updatedById: officerId },
+  });
   await writeAuditLog({
     actorId: officerId, action: "ELECTION_RESCHEDULED", resourceType: "Election",
     resourceId: electionId, electionId, outcome: "SUCCESS",
-    metadata: { requiresReapproval },
   });
-
-  return toElectionDto(final);
 }

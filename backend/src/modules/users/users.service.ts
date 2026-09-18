@@ -1,6 +1,5 @@
 import bcrypt from "bcrypt";
 import crypto from "crypto";
-import { User } from "@prisma/client";
 import { ForbiddenError } from "../../shared/errors/ForbiddenError";
 import { ValidationError } from "../../shared/errors/ValidationError";
 import { NotFoundError } from "../../shared/errors/NotFoundError";
