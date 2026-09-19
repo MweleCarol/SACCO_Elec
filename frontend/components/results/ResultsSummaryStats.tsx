@@ -1,4 +1,5 @@
 import { Users2, Vote, CheckSquare, AlertTriangle } from "lucide-react";
+import { StatCard } from "@/components/dashboard/StatCard";
 
 interface ResultsSummaryStatsProps {
   eligibleVoters: number;
@@ -14,26 +15,34 @@ export function ResultsSummaryStats({ eligibleVoters, totalVotesCast, turnoutPct
 
   return (
     <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-      <div className="rounded-2xl border border-[var(--sevs-border)] bg-white p-4 shadow-sm">
-        <Users2 className="h-4 w-4 text-[var(--sevs-navy)]" />
-        <p className="mt-2 text-xl font-extrabold text-[var(--sevs-navy)]">{eligibleVoters.toLocaleString()}</p>
-        <p className="text-xs text-[var(--sevs-text-muted)]">Eligible Voters</p>
-      </div>
-      <div className="rounded-2xl border border-[var(--sevs-border)] bg-white p-4 shadow-sm">
-        <Vote className="h-4 w-4 text-[var(--sevs-navy)]" />
-        <p className="mt-2 text-xl font-extrabold text-[var(--sevs-navy)]">{totalVotesCast.toLocaleString()}</p>
-        <p className="text-xs text-[var(--sevs-text-muted)]">Total Votes Cast · {turnoutPct}% turnout</p>
-      </div>
-      <div className="rounded-2xl border border-[var(--sevs-border)] bg-white p-4 shadow-sm">
-        <CheckSquare className="h-4 w-4 text-green-600" />
-        <p className="mt-2 text-xl font-extrabold text-green-700">{validVotes.toLocaleString()}</p>
-        <p className="text-xs text-[var(--sevs-text-muted)]">Valid Votes · {validPct}%</p>
-      </div>
-      <div className="rounded-2xl border border-[var(--sevs-border)] bg-white p-4 shadow-sm">
-        <AlertTriangle className="h-4 w-4 text-red-500" />
-        <p className="mt-2 text-xl font-extrabold text-red-600">{invalidVotes.toLocaleString()}</p>
-        <p className="text-xs text-[var(--sevs-text-muted)]">Invalid Votes · {invalidPct}%</p>
-      </div>
+      <StatCard
+        label="Eligible Voters"
+        value={eligibleVoters.toLocaleString()}
+        hint="Total members in the election"
+        icon={<Users2 className="h-4 w-4" />}
+        iconTone="navy"
+      />
+      <StatCard
+        label="Total Votes Cast"
+        value={totalVotesCast.toLocaleString()}
+        hint={`${turnoutPct}% turnout`}
+        icon={<Vote className="h-4 w-4" />}
+        iconTone="navy"
+      />
+      <StatCard
+        label="Valid Votes"
+        value={validVotes.toLocaleString()}
+        hint={`${validPct}% of total votes`}
+        icon={<CheckSquare className="h-4 w-4" />}
+        iconTone="green"
+      />
+      <StatCard
+        label="Invalid Votes"
+        value={invalidVotes.toLocaleString()}
+        hint={`${invalidPct}% of total votes`}
+        icon={<AlertTriangle className="h-4 w-4" />}
+        iconTone="red"
+      />
     </div>
   );
 }

@@ -3,18 +3,33 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { Download, ArrowLeft, Trophy, ChevronDown } from "lucide-react";
+import {
+  Download,
+  ArrowLeft,
+  Trophy,
+  ChevronDown,
+  Sparkles,
+  X,
+} from "lucide-react";
 import { useCurrentMember } from "@/hooks/useCurrentMember";
 import { Topbar } from "@/components/layout/Topbar";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { PositionResultsGrid } from "@/components/voter/PositionResultsGrid";
 import { ResultsSummaryStats } from "@/components/results/ResultsSummaryStats";
 import { TurnoutDonut } from "@/components/results/TurnoutDonut";
+import { VoterParticipationChart } from "@/components/results/VoterParticipationChart";
+import { ResultsByPositionSummary } from "@/components/results/ResultsByPositionSummary";
+import { ResultsVerificationStepper } from "@/components/results/ResultsVerificationStepper";
+import { ResultHighlightsCard } from "@/components/results/ResultHighlightsCard";
 import { OfficerResultsPanel } from "@/components/results/OfficerResultsPanel";
 import { AdminResultsPanel } from "@/components/results/AdminResultsPanel";
 import { AuditorResultsPanel } from "@/components/results/AuditorResultsPanel";
 import { CopilotChatPanel } from "@/components/copilot/CopilotChatPanel";
-import { getElectionResultSummary } from "@/services/mock/results";
+import {
+  getElectionResultSummary,
+  getVoteTimeline,
+  getResultHighlights,
+} from "@/services/mock/results";
 import { getApprovalsForTarget } from "@/services/mock/approvals";
 
 function formatPeriod(start: string, end: string) {
@@ -26,13 +41,11 @@ function formatPeriod(start: string, end: string) {
   return `${new Date(start).toLocaleDateString(undefined, opts)} – ${new Date(end).toLocaleDateString(undefined, opts)}`;
 }
 
-type TabKey = "POSITIONS" | "PARTICIPATION";
-
 export default function ElectionResultsDetailPage() {
   const { electionId } = useParams<{ electionId: string }>();
   const { member, isLoading } = useCurrentMember();
-  const [tab, setTab] = useState<TabKey>("POSITIONS");
   const [downloadMenuOpen, setDownloadMenuOpen] = useState(false);
+  const [copilotOpen, setCopilotOpen] = useState(false);
 
   if (isLoading) return null;
   if (!member) {
@@ -135,7 +148,10 @@ export default function ElectionResultsDetailPage() {
                 className="flex items-center gap-2 rounded-lg bg-[var(--sevs-navy)] px-4 py-2.5 text-sm font-bold text-white hover:bg-[var(--sevs-navy-hover)]"
               >
                 <Download className="h-4 w-4" />
-                Download Results Report
+                <span className="hidden sm:inline">
+                  Download Results Report
+                </span>
+                <span className="sm:hidden">Download</span>
                 <ChevronDown className="h-4 w-4" />
               </button>
 
@@ -193,136 +209,136 @@ export default function ElectionResultsDetailPage() {
           invalidVotes={result.invalidVotes}
         />
 
-        {/* tabs block continues unchanged below */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <div className="space-y-6 lg:col-span-2">
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+              <div className="rounded-2xl border border-[var(--sevs-border)] bg-white p-5 shadow-sm sm:p-6">
+                <h3 className="mb-4 text-sm font-bold uppercase tracking-wide text-[var(--sevs-text-muted)]">
+                  Voter Turnout
+                </h3>
+                <TurnoutDonut
+                  voted={election.totalVotesCast}
+                  notVoted={notVoted}
+                />
+              </div>
 
-        <div className="flex gap-2 border-b border-[var(--sevs-border)]">
-          <button
-            onClick={() => setTab("POSITIONS")}
-            className={`border-b-2 px-1 pb-2 text-sm font-bold transition ${
-              tab === "POSITIONS"
-                ? "border-[var(--sevs-navy)] text-[var(--sevs-navy)]"
-                : "border-transparent text-[var(--sevs-text-muted)]"
-            }`}
-          >
-            Results by Position
-          </button>
-          <button
-            onClick={() => setTab("PARTICIPATION")}
-            className={`border-b-2 px-1 pb-2 text-sm font-bold transition ${
-              tab === "PARTICIPATION"
-                ? "border-[var(--sevs-navy)] text-[var(--sevs-navy)]"
-                : "border-transparent text-[var(--sevs-text-muted)]"
-            }`}
-          >
-            Participation Summary
-          </button>
-        </div>
+              <div className="rounded-2xl border border-[var(--sevs-border)] bg-white p-5 shadow-sm sm:p-6">
+                <h3 className="mb-4 text-sm font-bold uppercase tracking-wide text-[var(--sevs-text-muted)]">
+                  Voter Participation
+                </h3>
+                <p className="mb-2 text-xs text-[var(--sevs-text-muted)]">
+                  Votes cast over time
+                </p>
+                <VoterParticipationChart data={getVoteTimeline(election.id)} />
+              </div>
+            </div>
 
-        {tab === "POSITIONS" && (
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-            <div className="lg:col-span-2">
+            <ResultsByPositionSummary positions={result.positions} />
+
+            <div id="candidates-results">
+              <h3 className="mb-4 text-sm font-bold uppercase tracking-wide text-[var(--sevs-text-muted)]">
+                Candidates &amp; Results
+              </h3>
               <PositionResultsGrid positions={result.positions} />
             </div>
-
-            <div className="space-y-5">
-              {isOfficer && <OfficerResultsPanel electionId={election.id} />}
-              {isAdmin && (
-                <AdminResultsPanel
-                  result={result}
+            <div className="flex flex-wrap gap-6">
+              <div className="min-w-[320px] flex-[2_1_480px]">
+                <ResultsVerificationStepper
+                  verifiedAt={result.verifiedAt}
                   approvedCount={approvedCount}
                   requiredCount={requiredCount}
+                  publishedAt={result.publishedAt}
+                  publishedBy={result.publishedBy}
                 />
-              )}
-              {isAuditor && (
-                <AuditorResultsPanel
-                  approvedCount={approvedCount}
-                  requiredCount={requiredCount}
+              </div>
+              <div className="min-w-[260px] flex-[1_1_260px]">
+                <ResultHighlightsCard
+                  highlights={getResultHighlights(election.id)}
                 />
-              )}
-              {isMember && (
-                <p className="rounded-lg bg-[var(--sevs-bg)] px-4 py-3 text-center text-sm font-medium text-[var(--sevs-navy)]">
-                  Your vote makes a difference. Thank you for participating in
-                  the {election.title}!
-                </p>
-              )}
-
-              {!isMember && (
-                <div className="h-72">
-                  <CopilotChatPanel
-                    greeting="Ask me questions about this election, candidates, results, or system health."
-                    suggestedQuestions={[
-                      "Was DAT followed for this result?",
-                      "Any irregularities detected?",
-                      "Summarize turnout",
-                    ]}
-                  />
-                </div>
-              )}
+              </div>
             </div>
           </div>
-        )}
 
-        {tab === "PARTICIPATION" && (
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-            <div className="rounded-2xl border border-[var(--sevs-border)] bg-white p-5 shadow-sm lg:col-span-2 sm:p-6">
-              <h3 className="mb-4 text-sm font-bold uppercase tracking-wide text-[var(--sevs-text-muted)]">
-                Voter Participation
-              </h3>
-              <TurnoutDonut
-                voted={election.totalVotesCast}
-                notVoted={notVoted}
+          <div className="space-y-5">
+            {isOfficer && <OfficerResultsPanel electionId={election.id} />}
+            {isAdmin && (
+              <AdminResultsPanel
+                result={result}
+                approvedCount={approvedCount}
+                requiredCount={requiredCount}
               />
-              <dl className="mt-4 grid grid-cols-3 gap-3 text-center text-sm">
-                <div>
-                  <dt className="text-xs text-[var(--sevs-text-muted)]">
-                    Eligible
-                  </dt>
-                  <dd className="font-bold text-[var(--sevs-navy)]">
-                    {election.totalEligibleVoters.toLocaleString()}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs text-[var(--sevs-text-muted)]">
-                    Voted
-                  </dt>
-                  <dd className="font-bold text-[var(--sevs-navy)]">
-                    {election.totalVotesCast.toLocaleString()}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs text-[var(--sevs-text-muted)]">
-                    Turnout
-                  </dt>
-                  <dd className="font-bold text-[var(--sevs-navy)]">
-                    {turnout}%
-                  </dd>
-                </div>
-              </dl>
-            </div>
+            )}
+            {isAuditor && (
+              <AuditorResultsPanel
+                approvedCount={approvedCount}
+                requiredCount={requiredCount}
+              />
+            )}
+            {isMember && (
+              <p className="rounded-lg bg-[var(--sevs-bg)] px-4 py-3 text-center text-sm font-medium text-[var(--sevs-navy)]">
+                Your vote makes a difference. Thank you for participating in the{" "}
+                {election.title}!
+              </p>
+            )}
 
-            <div className="space-y-5">
-              {isOfficer && <OfficerResultsPanel electionId={election.id} />}
-              {isAdmin && (
-                <AdminResultsPanel
-                  result={result}
-                  approvedCount={approvedCount}
-                  requiredCount={requiredCount}
+            {!isMember && (
+              <div className="hidden h-96 lg:sticky lg:top-8 lg:block">
+                <CopilotChatPanel
+                  title="AI Copilot"
+                  subtitle="Ask me anything about this election."
+                  greeting="Ask me questions about this election, candidates, results, or system health."
+                  suggestedQuestions={[
+                    "Was DAT followed for this result?",
+                    "Any irregularities detected?",
+                    "Summarize turnout",
+                  ]}
                 />
-              )}
-              {isAuditor && (
-                <AuditorResultsPanel
-                  approvedCount={approvedCount}
-                  requiredCount={requiredCount}
-                />
-              )}
-              {isMember && (
-                <p className="rounded-lg bg-[var(--sevs-bg)] px-4 py-3 text-center text-sm font-medium text-[var(--sevs-navy)]">
-                  Your vote makes a difference. Thank you for participating in
-                  the {election.title}!
-                </p>
-              )}
-            </div>
+              </div>
+            )}
           </div>
+        </div>
+
+        {!isMember && (
+          <>
+            <button
+              onClick={() => setCopilotOpen(true)}
+              className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-[var(--sevs-navy)] text-white shadow-lg lg:hidden"
+              aria-label="Ask AI Copilot"
+            >
+              <Sparkles className="h-6 w-6" />
+            </button>
+
+            {copilotOpen && (
+              <>
+                <div
+                  className="fixed inset-0 z-40 bg-black/30 lg:hidden"
+                  onClick={() => setCopilotOpen(false)}
+                />
+                <div className="fixed inset-x-0 bottom-0 z-50 flex h-[80vh] flex-col rounded-t-2xl bg-white shadow-lg lg:hidden">
+                  <div className="flex items-center justify-end px-4 pt-3">
+                    <button
+                      onClick={() => setCopilotOpen(false)}
+                      aria-label="Close Copilot"
+                    >
+                      <X className="h-5 w-5 text-[var(--sevs-text-muted)]" />
+                    </button>
+                  </div>
+                  <div className="min-h-0 flex-1 px-4 pb-4">
+                    <CopilotChatPanel
+                      title="AI Copilot"
+                      subtitle="Ask me anything about this election."
+                      greeting="Ask me questions about this election, candidates, results, or system health."
+                      suggestedQuestions={[
+                        "Was DAT followed for this result?",
+                        "Any irregularities detected?",
+                        "Summarize turnout",
+                      ]}
+                    />
+                  </div>
+                </div>
+              </>
+            )}
+          </>
         )}
       </div>
     </>

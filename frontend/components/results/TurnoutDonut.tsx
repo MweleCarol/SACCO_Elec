@@ -1,4 +1,4 @@
-"use client";
+-"use client";
 
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend } from "recharts";
 
@@ -12,8 +12,8 @@ export function TurnoutDonut({ voted, notVoted }: { voted: number; notVoted: num
       <ResponsiveContainer width="100%" height={200}>
         <PieChart>
           <Pie data={data} dataKey="value" innerRadius={55} outerRadius={80} paddingAngle={2}>
-            <Cell fill="#0d9488" />
-            <Cell fill="#e3e6eb" />
+            <Cell fill="#0d9488" stroke="#fff" strokeWidth={2} />
+            <Cell fill="#94a3b8" stroke="#fff" strokeWidth={2} />
           </Pie>
           <Legend verticalAlign="bottom" height={28} iconType="circle" wrapperStyle={{ fontSize: 12 }} />
         </PieChart>

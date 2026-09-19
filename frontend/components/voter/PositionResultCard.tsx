@@ -57,22 +57,22 @@ export function PositionResultCard({
 
   return (
     <div className="overflow-hidden rounded-2xl border border-[var(--sevs-border)] bg-white shadow-sm">
-      <div className="flex items-center justify-between border-b border-[var(--sevs-border)] px-4 py-3">
+      <div className="border-b border-[var(--sevs-border)] px-4 py-3">
         <div className="flex items-center gap-2">
           <span
-            className="flex h-9 w-9 items-center justify-center rounded-full text-white"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white"
             style={{ backgroundColor: accentColor }}
           >
             {icon}
           </span>
-          <h3 className="text-sm font-bold text-[var(--sevs-navy)]">
+          <h3 className="min-w-0 truncate text-sm font-bold text-[var(--sevs-navy)]">
             {result.positionTitle}
           </h3>
         </div>
-        <span className="text-xs font-medium text-[var(--sevs-text-muted)]">
+        <p className="mt-1 pl-11 text-xs font-medium text-[var(--sevs-text-muted)]">
           {result.candidates.length} candidate
           {result.candidates.length === 1 ? "" : "s"}
-        </span>
+        </p>
       </div>
 
       <div className="divide-y divide-[var(--sevs-border)]">
