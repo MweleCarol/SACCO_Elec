@@ -11,8 +11,8 @@ export function AuditorResultsPanel({ approvedCount, requiredCount }: { approved
   return (
     <div className="space-y-4">
       <div className="rounded-2xl border border-[var(--sevs-border)] bg-white p-4 shadow-sm">
-        <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-[var(--sevs-text-muted)]">Audit &amp; Compliance Summary</h3>
-        <div className="space-y-3 text-sm">
+        <h3 className="mb-2.5 text-sm font-bold uppercase tracking-wide text-[var(--sevs-text-muted)]">Audit &amp; Compliance Summary</h3>
+        <div className="space-y-2.5 text-sm">
           {checks.map((c) => (
             <div key={c.label} className="flex items-start gap-2">
               <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-600" />
@@ -26,8 +26,8 @@ export function AuditorResultsPanel({ approvedCount, requiredCount }: { approved
       </div>
 
       <div className="rounded-2xl border border-[var(--sevs-border)] bg-white p-4 shadow-sm">
-        <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-[var(--sevs-text-muted)]">Key Audit Evidence</h3>
-        <div className="space-y-2 text-sm">
+        <h3 className="mb-2.5 text-sm font-bold uppercase tracking-wide text-[var(--sevs-text-muted)]">Key Audit Evidence</h3>
+        <div className="space-y-1.5 text-sm">
           <a href="/audit-logs" className="block font-medium text-[var(--sevs-navy)] hover:underline">Download Audit Log (PDF)</a>
           <button
             onClick={() => console.log("Mock: would generate a Results Report PDF — no PDF backend exists yet.")}
