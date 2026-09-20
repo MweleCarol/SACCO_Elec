@@ -8,6 +8,7 @@ import * as approvalsRepository from "./approvals.repository";
 import { toApprovalRequestDto, ApprovalRequestDto } from "./approvals.dto";
 import { DecisionInput, ListApprovalRequestsQuery } from "./approvals.schema";
 import { executeActivation, executeCancellation, executeReschedule } from "../elections/elections.service";
+import { executePublish } from "../results/results.service"
 
 const REQUEST_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000; // 7 days — no explicit LLD figure, a reasonable default
 
@@ -26,12 +27,12 @@ const RESOLVERS: Partial<Record<string, (request: ApprovalRequest, tx: Prisma.Tr
       request.resourceId, request.requestedById,
       request.payload as { startDate: string; endDate: string }, tx
     ),
+  RESULT_PUBLICATION: (request, tx) => executePublish(request.resourceId, request.requestedById, tx), // add this line
 };
-
 // Called by elections.service — creates (or reuses) the ApprovalRequest
 // that gates one of the three DAT-controlled election actions.
 export async function requestApproval(params: {
-  actionType: "ELECTION_ACTIVATION" | "ELECTION_CANCELLATION" | "ELECTION_RESCHEDULE";
+    actionType: "ELECTION_ACTIVATION" | "ELECTION_CANCELLATION" | "ELECTION_RESCHEDULE" | "RESULT_PUBLICATION";
   electionId: string;
   requestedById: string;
   requiredApprovals: number;
