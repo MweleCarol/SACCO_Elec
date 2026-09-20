@@ -36,7 +36,7 @@ export function PositionResultsGrid({
   positions: PositionResult[];
 }) {
   return (
-    <div className="grid grid-cols-[repeat(auto-fit,minmax(260px,1fr))] gap-5">
+    <div className="grid grid-cols-[repeat(auto-fit,minmax(260px,1fr))] gap-4">
       {positions.map((result, i) => {
         const style = PALETTE[i % PALETTE.length];
         return (
