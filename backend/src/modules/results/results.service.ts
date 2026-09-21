@@ -6,6 +6,7 @@ import { writeAuditLog } from "../audit/audit.service";
 import { requestApproval } from "../approvals/approvals.service";
 import * as resultsRepository from "./results.repository";
 import { ResultDto } from "./results.dto";
+import { notifyAllActiveMembers } from "../notifications/notifications.service";
 
 async function getElectionOrThrow(electionId: string) {
   const election = await findElectionById(electionId);
@@ -96,9 +97,14 @@ export async function executePublish(
   await resultsRepository.publishResults(electionId, tx);
 
   await writeAuditLog({
-    actorId: officerId, action: "RESULTS_PUBLISHED", resourceType: "Election",
-    resourceId: electionId, electionId, outcome: "SUCCESS",
-  });
+  actorId: officerId, action: "RESULTS_PUBLISHED", resourceType: "Election",
+  resourceId: electionId, electionId, outcome: "SUCCESS",
+});
+
+notifyAllActiveMembers({
+  type: "RESULTS_PUBLISHED", title: "Election results published",
+  message: `Results for this election have been published.`, electionId,
+}).catch(() => {});
 }
 
 export async function getResults(
