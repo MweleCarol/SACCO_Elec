@@ -2,6 +2,10 @@ import { prisma } from "../../config/prisma";
 import { AuditOutcome } from "@prisma/client";
 import { computeAuditHash, AUDIT_GENESIS_HASH } from "../../shared/utils/hash";
 import { logger } from "../../config/logger";
+import { toAuditLogDto, AuditLogDto, ChainVerificationResult } from "./audit.dto";
+import { ListAuditLogsQuery } from "./audit.schema";
+import * as auditRepository from "./audit.repository";
+import { NotFoundError } from "../../shared/errors/NotFoundError";
 
 export interface WriteAuditLogInput {
   actorId: string | null;
@@ -76,4 +80,62 @@ export async function writeAuditLog(input: WriteAuditLogInput): Promise<void> {
       message: err instanceof Error ? err.message : String(err),
     });
   }
+}
+
+// ─── Phase 9 additions below — querying what writeAuditLog has been
+// writing since Phase 2 ───────────────────────────────────────────────
+
+export async function getById(id: string): Promise<AuditLogDto> {
+  const log = await auditRepository.findById(id);
+  if (!log) throw new NotFoundError("Audit log entry");
+  return toAuditLogDto(log);
+}
+
+export async function listLogs(query: ListAuditLogsQuery) {
+  const [logs, totalCount] = await auditRepository.listLogs(query);
+  return {
+    logs: logs.map(toAuditLogDto),
+    pagination: {
+      page: query.page, pageSize: query.pageSize, totalCount,
+      totalPages: Math.ceil(totalCount / query.pageSize),
+    },
+  };
+}
+
+// Walks the chain in write order, recomputing each row's hash from its
+// own fields + the PREVIOUS row's actual stored currentHash (not the
+// previous row's recomputed hash — a single corrupted row should be
+// reported as exactly one break, not cascade into flagging every row
+// after it as broken too).
+//
+// Known limitation: rows are ordered by createdAt, which has no
+// dedicated sequence/version column to break ties within the same
+// millisecond. For this project's request volume that's not a practical
+// concern, but a production system verifying a high-throughput chain
+// would want an explicit monotonic sequence number to order by instead.
+export async function verifyChain(dateFrom?: Date, dateTo?: Date): Promise<ChainVerificationResult> {
+  const logs = await auditRepository.listForVerification(dateFrom, dateTo);
+  const breaks: ChainVerificationResult["breaks"] = [];
+
+  let expectedPreviousHash = dateFrom ? logs[0]?.previousHash ?? AUDIT_GENESIS_HASH : AUDIT_GENESIS_HASH;
+
+  for (const log of logs) {
+    if (log.previousHash !== expectedPreviousHash) {
+      breaks.push({ auditLogId: log.id, reason: "LINK_MISMATCH", createdAt: log.createdAt });
+    }
+
+    const recomputed = computeAuditHash({
+      actorId: log.actorId, action: log.action, resourceType: log.resourceType,
+      resourceId: log.resourceId, electionId: log.electionId, outcome: log.outcome,
+      metadata: log.metadata, createdAt: log.createdAt.toISOString(), previousHash: log.previousHash,
+    });
+
+    if (recomputed !== log.currentHash) {
+      breaks.push({ auditLogId: log.id, reason: "HASH_MISMATCH", createdAt: log.createdAt });
+    }
+
+    expectedPreviousHash = log.currentHash;
+  }
+
+  return { recordsChecked: logs.length, intact: breaks.length === 0, breaks };
 }

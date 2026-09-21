@@ -6,9 +6,9 @@ import { NotFoundError } from "../../shared/errors/NotFoundError";
 import { writeAuditLog } from "../audit/audit.service";
 import * as electionsRepository from "./elections.repository";
 import { toElectionDto, ElectionDto, PaginatedElectionsDto } from "./elections.dto";
-import {
-  CreateElectionInput, UpdateElectionInput, RescheduleElectionInput, ReviewApprovalInput, ListElectionsQuery,
-} from "./elections.schema";
+import { CreateElectionInput, UpdateElectionInput, RescheduleElectionInput, ReviewApprovalInput, ListElectionsQuery,} from "./elections.schema";
+import { notifyAllActiveMembers } from "../notifications/notifications.service";
+
 // Circular import note: approvals.service.ts imports executeActivation/
 // executeCancellation/executeReschedule from this file, and this file
 // imports requestApproval from approvals.service.ts. This is safe here
@@ -194,13 +194,19 @@ export async function rescheduleElection(officerId: string, electionId: string, 
 // --- These three EXECUTE the actual transition, called only by approvals.service after quorum ---
 
 export async function executeActivation(electionId: string, officerId: string, tx: Prisma.TransactionClient) {
-  await tx.election.update({
+  const election = await tx.election.update({
     where: { id: electionId }, data: { status: "ACTIVE", activatedAt: new Date(), updatedById: officerId },
   });
   await writeAuditLog({
     actorId: officerId, action: "ELECTION_ACTIVATED", resourceType: "Election",
     resourceId: electionId, electionId, outcome: "SUCCESS",
   });
+  // Fire-and-forget outside the transaction — a notification failure
+  // should never roll back a successful election activation.
+  notifyAllActiveMembers({
+    type: "ELECTION_ACTIVATED", title: "Voting is now open",
+    message: `"${election.name}" is now open for voting.`, electionId,
+  }).catch(() => {});
 }
 
 export async function executeCancellation(
