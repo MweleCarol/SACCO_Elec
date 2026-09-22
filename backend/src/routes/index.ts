@@ -5,9 +5,12 @@ import membershipSyncRoutes from "../modules/membership-sync/membership-sync.rou
 import electionsRoutes from "../modules/elections/elections.routes";
 import { nestedRouter as positionsNestedRoutes, standaloneRouter as positionsStandaloneRoutes } from "../modules/positions/positions.routes";
 import { nestedRouter as candidatesNestedRoutes, standaloneRouter as candidatesStandaloneRoutes } from "../modules/candidates/candidates.routes";
-import approvalsRoutes from "../modules/approvals/approvals.routes";
 import { router as votingRoutes } from "../modules/voting/voting.routes";
+import approvalsRoutes from "../modules/approvals/approvals.routes";
 import { router as resultsRoutes } from "../modules/results/results.routes";
+import auditRoutes from "../modules/audit/audit.routes";
+import notificationsRoutes from "../modules/notifications/notifications.routes";
+import governanceRoutes from "../modules/ai-governance/ai-governance.routes";
 
 const router = Router();
 
@@ -22,5 +25,8 @@ router.use("/candidates", candidatesStandaloneRoutes);
 router.use("/elections/:electionId", votingRoutes);
 router.use("/approval-requests", approvalsRoutes);
 router.use("/elections/:electionId", resultsRoutes);
+router.use("/audit-logs", auditRoutes);
+router.use("/notifications", notificationsRoutes);
+router.use("/governance", governanceRoutes);
 
 export default router;

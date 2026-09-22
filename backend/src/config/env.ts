@@ -18,6 +18,8 @@ const envSchema = z.object({
   JWT_ACCESS_EXPIRES_IN: z.string().default("15m"),
   JWT_REFRESH_EXPIRES_IN: z.string().default("7d"),
 
+  GEMINI_API_KEY: z.string().optional(),
+
   TOTP_ISSUER: z.string().default("SEVS"),
 
   ENCRYPTION_KEY: z
