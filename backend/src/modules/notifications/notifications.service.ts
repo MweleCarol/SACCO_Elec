@@ -5,9 +5,7 @@ import * as notificationsRepository from "./notifications.repository";
 import { toNotificationDto, NotificationDto } from "./notifications.dto";
 import { ListNotificationsQuery } from "./notifications.schema";
 
-// Generic entry point other modules call — deliberately not exported as
-// "notify one user" vs "notify many" separately; callers always pass an
-// array, even for a single recipient, so there's one code path.
+// Callers always pass an array, even for one recipient: one code path.
 export async function notify(
   userIds: string[],
   data: { type: NotificationType; title: string; message: string; electionId?: string }

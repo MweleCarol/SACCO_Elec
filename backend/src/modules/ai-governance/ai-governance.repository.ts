@@ -8,8 +8,6 @@ export function getRecentAuditLogs(since: Date, actions?: string[]): Promise<Aud
   });
 }
 
-// Dedupe guard: don't re-flag the exact same resource for the exact same
-// event type within the lookback window every time a scan runs.
 export function findExistingInsight(eventType: string, resourceId: string, since: Date) {
   return prisma.aIInsight.findFirst({
     where: { eventType, resourceId, createdAt: { gte: since } },
@@ -52,8 +50,7 @@ export function acknowledgeInsight(id: string, userId: string) {
   return prisma.aIInsight.update({ where: { id }, data: { acknowledgedBy: userId, acknowledgedAt: new Date() } });
 }
 
-// --- Data for the Copilot's context and the reports endpoint — aggregates ONLY, never Vote/Participation rows ---
-
+// Aggregates only — never Vote/Participation rows.
 export async function getElectionCountsByStatus() {
   const grouped = await prisma.election.groupBy({ by: ["status"], _count: { status: true } });
   return Object.fromEntries(grouped.map((g) => [g.status, g._count.status]));

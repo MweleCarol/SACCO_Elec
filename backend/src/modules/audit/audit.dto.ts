@@ -12,15 +12,13 @@ export interface AuditLogDto {
   createdAt: Date;
 }
 
+// previousHash/currentHash are deliberately excluded: they're chain-
+// verification internals, not something a reader of the trail needs.
 export function toAuditLogDto(log: AuditLog): AuditLogDto {
   return {
     id: log.id, actorId: log.actorId, action: log.action, resourceType: log.resourceType,
     resourceId: log.resourceId, electionId: log.electionId, outcome: log.outcome,
     metadata: log.metadata, createdAt: log.createdAt,
-    // previousHash/currentHash deliberately excluded from the normal DTO —
-    // they're implementation detail for chain verification, not something
-    // a reader browsing the audit trail needs to see. Exposed only via the
-    // verify-chain endpoint's own response shape below.
   };
 }
 

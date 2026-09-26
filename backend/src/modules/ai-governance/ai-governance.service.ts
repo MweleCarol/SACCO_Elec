@@ -1,14 +1,13 @@
-
 import { NotFoundError } from "../../shared/errors/NotFoundError";
 import { writeAuditLog } from "../audit/audit.service";
 import * as repo from "./ai-governance.repository";
 import { toAIInsightDto, AIInsightDto } from "./ai-governance.dto";
 import { ListInsightsQuery } from "./ai-governance.schema";
 
-const SCAN_WINDOW_MS = 24 * 60 * 60 * 1000; // look back 24h on each scan
-const DEDUPE_WINDOW_MS = 24 * 60 * 60 * 1000; // don't re-flag the same resource within 24h
+const SCAN_WINDOW_MS = 24 * 60 * 60 * 1000;
+const DEDUPE_WINDOW_MS = 24 * 60 * 60 * 1000;
 
-// --- Rule 1: rapid failed logins ---
+// Rule 1: rapid failed logins
 const FAILED_LOGIN_THRESHOLD = 3;
 const FAILED_LOGIN_WINDOW_MS = 10 * 60 * 1000;
 
@@ -50,7 +49,7 @@ async function detectRapidFailedLogins(since: Date): Promise<void> {
   }
 }
 
-// --- Rule 2: approval decided suspiciously fast ---
+// Rule 2: approval decided suspiciously fast
 const FAST_APPROVAL_THRESHOLD_MS = 30 * 1000;
 
 async function detectFastApprovals(since: Date): Promise<void> {
@@ -84,7 +83,7 @@ async function detectFastApprovals(since: Date): Promise<void> {
   }
 }
 
-// --- Rule 3: sensitive actions outside normal hours (06:00-22:00 UTC) ---
+// Rule 3: sensitive actions outside normal hours (06:00-22:00 UTC)
 const SENSITIVE_ACTIONS = ["ELECTION_ACTIVATED", "ELECTION_CANCELLED", "RESULTS_PUBLISHED", "MEMBERSHIP_SYNC_COMPLETED"];
 
 async function detectOffHoursActivity(since: Date): Promise<void> {
@@ -144,6 +143,7 @@ export async function getInsightById(id: string): Promise<AIInsightDto> {
   return toAIInsightDto(insight);
 }
 
+// Human-in-the-Loop: acknowledging never triggers any automatic action.
 export async function acknowledgeInsight(userId: string, id: string): Promise<AIInsightDto> {
   const insight = await repo.findInsightById(id);
   if (!insight) throw new NotFoundError("Insight");

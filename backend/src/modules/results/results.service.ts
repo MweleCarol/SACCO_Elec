@@ -4,9 +4,9 @@ import { ForbiddenError } from "../../shared/errors/ForbiddenError";
 import { findElectionById } from "../elections/elections.repository";
 import { writeAuditLog } from "../audit/audit.service";
 import { requestApproval } from "../approvals/approvals.service";
+import { notifyAllActiveMembers } from "../notifications/notifications.service";
 import * as resultsRepository from "./results.repository";
 import { ResultDto } from "./results.dto";
-import { notifyAllActiveMembers } from "../notifications/notifications.service";
 
 async function getElectionOrThrow(electionId: string) {
   const election = await findElectionById(electionId);
@@ -17,9 +17,8 @@ async function getElectionOrThrow(electionId: string) {
 export async function tallyResults(officerId: string, electionId: string): Promise<void> {
   const election = await getElectionOrThrow(electionId);
 
-  // Only CLOSED — not yet published — so tally can be safely re-run to fix
-  // a mistake, but never after publication has already made results final
-  // and visible to members.
+  // Only CLOSED: tally can be re-run to fix a mistake, but never after
+  // publication has made results final.
   if (election.status !== "CLOSED") {
     throw new ForbiddenError("Results can only be tallied once voting has closed.");
   }
@@ -39,12 +38,8 @@ export async function tallyResults(officerId: string, electionId: string): Promi
       voteCount: tallyMap.get(`${position.id}:${c.id}`) ?? 0,
     }));
 
-    // Sort by voteCount desc; candidates array was already fetched in
-    // createdAt asc order, and Array.sort is stable in Node, so ties
-    // resolve to earliest-registered-wins deterministically. See the
-    // Phase 8 design note on why this specific tiebreak was chosen (LLD
-    // doesn't specify one) rather than left to whatever order the DB
-    // happens to return.
+    // Candidates arrive in createdAt order and Array.sort is stable, so
+    // ties resolve to earliest-registered-wins (the LLD specifies no tie rule).
     withCounts.sort((a, b) => b.voteCount - a.voteCount);
 
     withCounts.forEach((c, index) => {
@@ -63,9 +58,8 @@ export async function tallyResults(officerId: string, electionId: string): Promi
   });
 }
 
-// Requests DAT approval to publish — same quorum/veto machinery as
-// election activation/cancellation/reschedule from Phase 7, just a
-// different actionType.
+// Requests DAT approval to publish, using the same quorum/veto machinery
+// as election activation.
 export async function requestPublish(officerId: string, electionId: string) {
   const election = await getElectionOrThrow(electionId);
 
@@ -86,8 +80,7 @@ export async function requestPublish(officerId: string, electionId: string) {
   });
 }
 
-// Called only by approvals.service.ts's dispatch table after DAT quorum
-// is reached — not reachable via any direct route.
+// Called only by approvals.service.ts after DAT quorum is reached.
 export async function executePublish(
   electionId: string, officerId: string, tx: Prisma.TransactionClient
 ): Promise<void> {
@@ -97,14 +90,14 @@ export async function executePublish(
   await resultsRepository.publishResults(electionId, tx);
 
   await writeAuditLog({
-  actorId: officerId, action: "RESULTS_PUBLISHED", resourceType: "Election",
-  resourceId: electionId, electionId, outcome: "SUCCESS",
-});
+    actorId: officerId, action: "RESULTS_PUBLISHED", resourceType: "Election",
+    resourceId: electionId, electionId, outcome: "SUCCESS",
+  });
 
-notifyAllActiveMembers({
-  type: "RESULTS_PUBLISHED", title: "Election results published",
-  message: `Results for this election have been published.`, electionId,
-}).catch(() => {});
+  notifyAllActiveMembers({
+    type: "RESULTS_PUBLISHED", title: "Election results published",
+    message: `Results for this election have been published.`, electionId,
+  }).catch(() => {});
 }
 
 export async function getResults(

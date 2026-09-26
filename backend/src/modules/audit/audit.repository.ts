@@ -31,9 +31,7 @@ export function listLogs(filters: ListAuditLogsFilters) {
   ]);
 }
 
-// Ordered ascending by createdAt for chain walking — the reverse of the
-// list-for-browsing order above, since the chain must be verified in the
-// order it was actually written.
+// Ascending order for chain walking: the reverse of the browsing order above.
 export function listForVerification(dateFrom?: Date, dateTo?: Date): Promise<AuditLog[]> {
   return prisma.auditLog.findMany({
     where: {

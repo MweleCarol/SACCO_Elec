@@ -27,6 +27,7 @@ const envSchema = z.object({
     .length(64, "ENCRYPTION_KEY must be a 64-character hex string (32 bytes)"),
 
   CORS_ORIGIN: z.string().default("http://localhost:3000"),
+
 });
 
 type Env = z.infer<typeof envSchema>;
