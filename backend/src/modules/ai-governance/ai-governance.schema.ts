@@ -3,7 +3,8 @@ import { z } from "zod";
 export const listInsightsQuerySchema = z.object({
   riskLevel: z.enum(["LOW", "MEDIUM", "HIGH"]).optional(),
   eventType: z.string().optional(),
-  acknowledgedOnly: z.coerce.boolean().optional(),
+  // Parsed explicitly: z.coerce.boolean() would treat "false" as true.
+  acknowledgedOnly: z.enum(["true", "false"]).transform((v) => v === "true").optional(),
   page: z.coerce.number().int().positive().default(1),
   pageSize: z.coerce.number().int().positive().max(100).default(20),
 });

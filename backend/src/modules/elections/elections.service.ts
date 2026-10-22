@@ -1,23 +1,19 @@
-import { Election, Prisma } from "@prisma/client";
+import { Election, ElectionStatus, Prisma } from "@prisma/client";
 import { assertValidTransition, InvalidTransitionError } from "../../shared/constants/election-transitions";
 import { ForbiddenError } from "../../shared/errors/ForbiddenError";
 import { ConflictError } from "../../shared/errors/ConflictError";
 import { NotFoundError } from "../../shared/errors/NotFoundError";
-import { writeAuditLog } from "../audit/audit.service";
+import { writeAuditLog, writeAuditLogInTransaction } from "../audit/audit.service";
 import * as electionsRepository from "./elections.repository";
 import { toElectionDto, ElectionDto, PaginatedElectionsDto } from "./elections.dto";
-import { CreateElectionInput, UpdateElectionInput, RescheduleElectionInput, ReviewApprovalInput, ListElectionsQuery,} from "./elections.schema";
-import { notifyAllActiveMembers } from "../notifications/notifications.service";
-
-// Circular import note: approvals.service.ts imports executeActivation/
-// executeCancellation/executeReschedule from this file, and this file
-// imports requestApproval from approvals.service.ts. This is safe here
-// specifically because neither side calls the other's export at module-
-// load time — only inside async function bodies invoked later, by which
-// point both modules have finished initializing. If this ever becomes
-// fragile, the fix is moving the three execute* functions to their own
-// file rather than restructuring the approval flow itself.
+import {
+  CreateElectionInput, UpdateElectionInput, RescheduleElectionInput, ReviewApprovalInput, ListElectionsQuery,
+} from "./elections.schema";
+// Circular import: approvals.service imports the execute* functions below, and
+// this file imports requestApproval. Safe because neither side calls the other
+// at module-load time, only inside async function bodies.
 import { requestApproval } from "../approvals/approvals.service";
+import { notifyAllActiveMembers } from "../notifications/notifications.service";
 
 async function getElectionOrThrow(id: string): Promise<Election> {
   const election = await electionsRepository.findElectionById(id);
@@ -103,10 +99,9 @@ export async function submitForApproval(officerId: string, electionId: string): 
   return toElectionDto(updated);
 }
 
-// Single-administrator editorial review of the election plan itself
-// (LLD §8's Draft -> Pending Approval -> Approved step) — distinct from
-// DAT, which gates the three actions below. This is NOT a stopgap; it's
-// staying as single-reviewer by design, per the Phase 7 discussion.
+// Single-administrator editorial review of the election plan (LLD section 8).
+// Distinct from DAT, which gates activation, cancellation, rescheduling and
+// publication. This is permanent by design, not a stopgap.
 export async function reviewApproval(
   adminId: string, electionId: string, input: ReviewApprovalInput
 ): Promise<ElectionDto> {
@@ -149,7 +144,7 @@ export async function closeElection(officerId: string, electionId: string): Prom
   return toElectionDto(updated);
 }
 
-// --- These three REQUEST DAT approval; they no longer transition the election directly ---
+// --- These three REQUEST DAT approval; they do not transition the election ---
 
 export async function activateElection(officerId: string, electionId: string) {
   const election = await getElectionOrThrow(electionId);
@@ -191,45 +186,86 @@ export async function rescheduleElection(officerId: string, electionId: string, 
   });
 }
 
-// --- These three EXECUTE the actual transition, called only by approvals.service after quorum ---
+// --- These three EXECUTE the change. Called only by approvals.service, inside
+// its resolution transaction, after DAT quorum is reached. They are FAIL-CLOSED:
+// the audit row is written in the same transaction, so a failed audit write
+// rolls the whole action back. ---
 
-export async function executeActivation(electionId: string, officerId: string, tx: Prisma.TransactionClient) {
+// A DAT request can sit pending for days, so re-check the election's CURRENT
+// status inside the transaction before acting on an old approval.
+async function assertTransitionInTx(
+  tx: Prisma.TransactionClient, electionId: string, to: ElectionStatus
+): Promise<void> {
+  const current = await tx.election.findUnique({ where: { id: electionId } });
+  if (!current) throw new NotFoundError("Election");
+  try {
+    assertValidTransition(current.status, to);
+  } catch (err) {
+    if (err instanceof InvalidTransitionError) throw new ConflictError(err.message);
+    throw err;
+  }
+}
+
+// Returns a callback that approvals.service runs only AFTER the transaction
+// commits, so no notification goes out for an action that rolled back.
+export async function executeActivation(
+  electionId: string, officerId: string, tx: Prisma.TransactionClient
+): Promise<() => void> {
+  await assertTransitionInTx(tx, electionId, "ACTIVE");
+
   const election = await tx.election.update({
     where: { id: electionId }, data: { status: "ACTIVE", activatedAt: new Date(), updatedById: officerId },
   });
-  await writeAuditLog({
+
+  await writeAuditLogInTransaction(tx, {
     actorId: officerId, action: "ELECTION_ACTIVATED", resourceType: "Election",
     resourceId: electionId, electionId, outcome: "SUCCESS",
   });
-  // Fire-and-forget outside the transaction — a notification failure
-  // should never roll back a successful election activation.
-  notifyAllActiveMembers({
-    type: "ELECTION_ACTIVATED", title: "Voting is now open",
-    message: `"${election.name}" is now open for voting.`, electionId,
-  }).catch(() => {});
+
+  return () => {
+    notifyAllActiveMembers({
+      type: "ELECTION_ACTIVATED", title: "Voting is now open",
+      message: `"${election.name}" is now open for voting.`, electionId,
+    }).catch(() => {});
+  };
 }
 
 export async function executeCancellation(
   electionId: string, adminId: string, reason: string, tx: Prisma.TransactionClient
-) {
+): Promise<undefined> {
+  await assertTransitionInTx(tx, electionId, "ARCHIVED");
+
   await tx.election.update({
     where: { id: electionId }, data: { status: "ARCHIVED", archivedAt: new Date(), updatedById: adminId },
   });
-  await writeAuditLog({
+
+  await writeAuditLogInTransaction(tx, {
     actorId: adminId, action: "ELECTION_CANCELLED", resourceType: "Election",
     resourceId: electionId, electionId, outcome: "SUCCESS", metadata: { reason },
   });
+
+  return undefined;
 }
 
 export async function executeReschedule(
-  electionId: string, officerId: string, dates: { startDate: string; endDate: string }, tx: Prisma.TransactionClient
-) {
+  electionId: string, officerId: string, dates: { startDate: string; endDate: string },
+  tx: Prisma.TransactionClient
+): Promise<undefined> {
+  const current = await tx.election.findUnique({ where: { id: electionId } });
+  if (!current) throw new NotFoundError("Election");
+  if (!["DRAFT", "APPROVED", "SCHEDULED"].includes(current.status)) {
+    throw new ConflictError("This election can no longer be rescheduled.");
+  }
+
   await tx.election.update({
     where: { id: electionId },
     data: { startDate: new Date(dates.startDate), endDate: new Date(dates.endDate), updatedById: officerId },
   });
-  await writeAuditLog({
+
+  await writeAuditLogInTransaction(tx, {
     actorId: officerId, action: "ELECTION_RESCHEDULED", resourceType: "Election",
     resourceId: electionId, electionId, outcome: "SUCCESS",
   });
+
+  return undefined;
 }

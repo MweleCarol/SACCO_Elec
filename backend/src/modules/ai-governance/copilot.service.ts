@@ -82,7 +82,7 @@ export async function askCopilot(question: string): Promise<CopilotResponseDto> 
   }
 
   if (!answer) {
-    throw new AppError("The Copilot returned an empty response. Please try again.", 502);
+    throw new AppError("The Copilot returned an empty response. Please try again.",  502);
   }
 
   return {

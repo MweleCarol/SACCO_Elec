@@ -3,7 +3,7 @@ import { prisma } from "../../config/prisma";
 import { NotFoundError } from "../../shared/errors/NotFoundError";
 import { ForbiddenError } from "../../shared/errors/ForbiddenError";
 import { ConflictError } from "../../shared/errors/ConflictError";
-import { writeAuditLog } from "../audit/audit.service";
+import { writeAuditLog, writeAuditLogInTransaction } from "../audit/audit.service";
 import { notify } from "../notifications/notifications.service";
 import * as approvalsRepository from "./approvals.repository";
 import { toApprovalRequestDto, ApprovalRequestDto } from "./approvals.dto";
@@ -13,9 +13,14 @@ import { executePublish } from "../results/results.service";
 
 const REQUEST_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 
-// What actually happens once a request is APPROVED. Deliberately Partial:
-// action types with no resolver yet must fail loudly, not silently no-op.
-const RESOLVERS: Partial<Record<string, (request: ApprovalRequest, tx: Prisma.TransactionClient) => Promise<void>>> = {
+// A resolver runs INSIDE the resolution transaction. It may return a callback
+// that runs only after that transaction commits (used for notifications).
+type PostCommitHook = () => void;
+type Resolver = (request: ApprovalRequest, tx: Prisma.TransactionClient) => Promise<PostCommitHook | undefined>;
+
+// What happens once a request is APPROVED. Deliberately Partial: action types
+// with no resolver yet must fail loudly, not silently do nothing.
+const RESOLVERS: Partial<Record<string, Resolver>> = {
   ELECTION_ACTIVATION: (request, tx) => executeActivation(request.resourceId, request.requestedById, tx),
   ELECTION_CANCELLATION: (request, tx) =>
     executeCancellation(request.resourceId, request.requestedById, (request.payload as { reason: string }).reason, tx),
@@ -54,7 +59,9 @@ export async function requestApproval(params: {
   await writeAuditLog({
     actorId: params.requestedById, action: "APPROVAL_REQUESTED", resourceType: "Election",
     resourceId: params.electionId, electionId: params.electionId, outcome: "SUCCESS",
-    metadata: { actionType: params.actionType, requiredApprovals: params.requiredApprovals },
+    metadata: {
+      approvalRequestId: request.id, actionType: params.actionType, requiredApprovals: params.requiredApprovals,
+    },
   });
 
   return toApprovalRequestDto(request, { approveCount: 0, rejectCount: 0 });
@@ -108,7 +115,7 @@ export async function decide(
   await writeAuditLog({
     actorId: approverId, action: "APPROVAL_DECIDED", resourceType: "Election",
     resourceId: request.resourceId, electionId: request.electionId ?? undefined, outcome: "SUCCESS",
-    metadata: { decision: input.decision, ...tally },
+    metadata: { approvalRequestId: requestId, decision: input.decision, ...tally },
   });
 
   // Veto: a single REJECT resolves immediately regardless of approve count.
@@ -126,11 +133,13 @@ export async function decide(
 async function resolveAndDispatch(
   request: ApprovalRequest, finalStatus: "APPROVED" | "REJECTED", tally: { approveCount: number; rejectCount: number }
 ): Promise<ApprovalRequestDto> {
-  let claimed = false;
+  // FAIL-CLOSED: the claim, the election change, markExecuted and the audit
+  // rows all commit together or not at all.
+  const outcome = await prisma.$transaction(async (tx) => {
+    const claimed = await approvalsRepository.claimResolution(request.id, finalStatus, tx);
+    if (!claimed) return { claimed: false as const }; // another decision resolved it first
 
-  await prisma.$transaction(async (tx) => {
-    claimed = await approvalsRepository.claimResolution(request.id, finalStatus, tx);
-    if (!claimed) return;
+    let afterCommit: PostCommitHook | undefined;
 
     if (finalStatus === "APPROVED") {
       const resolver = RESOLVERS[request.actionType];
@@ -139,23 +148,31 @@ async function resolveAndDispatch(
           `No resolver registered for actionType '${request.actionType}' — this request type should not be able to reach quorum yet.`
         );
       }
-      await resolver(request, tx);
+      afterCommit = await resolver(request, tx);
       await approvalsRepository.markExecuted(request.id, tx);
     }
+
+    await writeAuditLogInTransaction(tx, {
+      actorId: request.requestedById,
+      action: finalStatus === "APPROVED" ? "APPROVAL_EXECUTED" : "APPROVAL_REJECTED",
+      resourceType: "Election", resourceId: request.resourceId, electionId: request.electionId ?? undefined,
+      outcome: "SUCCESS", metadata: { approvalRequestId: request.id, ...tally },
+    });
+
+    return { claimed: true as const, afterCommit };
   });
 
-  await writeAuditLog({
-    actorId: request.requestedById, action: finalStatus === "APPROVED" ? "APPROVAL_EXECUTED" : "APPROVAL_REJECTED",
-    resourceType: "Election", resourceId: request.resourceId, electionId: request.electionId ?? undefined,
-    outcome: "SUCCESS", metadata: { claimed, ...tally },
-  });
+  if (outcome.claimed) {
+    // Only after commit: nothing goes out for an action that rolled back.
+    outcome.afterCommit?.();
 
-  notify([request.requestedById], {
-    type: "APPROVAL_DECIDED",
-    title: finalStatus === "APPROVED" ? "Your request was approved" : "Your request was rejected",
-    message: `Your ${request.actionType.toLowerCase().replace(/_/g, " ")} request has been ${finalStatus.toLowerCase()}.`,
-    electionId: request.electionId ?? undefined,
-  }).catch(() => {});
+    notify([request.requestedById], {
+      type: "APPROVAL_DECIDED",
+      title: finalStatus === "APPROVED" ? "Your request was approved" : "Your request was rejected",
+      message: `Your ${request.actionType.toLowerCase().replace(/_/g, " ")} request has been ${finalStatus.toLowerCase()}.`,
+      electionId: request.electionId ?? undefined,
+    }).catch(() => {});
+  }
 
   const updated = await approvalsRepository.findRequestById(request.id);
   return toApprovalRequestDto(updated!, tally);

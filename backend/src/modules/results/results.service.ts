@@ -2,7 +2,7 @@ import { Prisma } from "@prisma/client";
 import { ConflictError } from "../../shared/errors/ConflictError";
 import { ForbiddenError } from "../../shared/errors/ForbiddenError";
 import { findElectionById } from "../elections/elections.repository";
-import { writeAuditLog } from "../audit/audit.service";
+import { writeAuditLog, writeAuditLogInTransaction } from "../audit/audit.service";
 import { requestApproval } from "../approvals/approvals.service";
 import { notifyAllActiveMembers } from "../notifications/notifications.service";
 import * as resultsRepository from "./results.repository";
@@ -38,8 +38,8 @@ export async function tallyResults(officerId: string, electionId: string): Promi
       voteCount: tallyMap.get(`${position.id}:${c.id}`) ?? 0,
     }));
 
-    // Candidates arrive in createdAt order and Array.sort is stable, so
-    // ties resolve to earliest-registered-wins (the LLD specifies no tie rule).
+    // Candidates arrive in createdAt order and Array.sort is stable, so ties
+    // resolve to earliest-registered-wins (the LLD specifies no tie rule).
     withCounts.sort((a, b) => b.voteCount - a.voteCount);
 
     withCounts.forEach((c, index) => {
@@ -58,8 +58,8 @@ export async function tallyResults(officerId: string, electionId: string): Promi
   });
 }
 
-// Requests DAT approval to publish, using the same quorum/veto machinery
-// as election activation.
+// Requests DAT approval to publish, using the same quorum/veto machinery as
+// election activation.
 export async function requestPublish(officerId: string, electionId: string) {
   const election = await getElectionOrThrow(electionId);
 
@@ -80,24 +80,35 @@ export async function requestPublish(officerId: string, electionId: string) {
   });
 }
 
-// Called only by approvals.service.ts after DAT quorum is reached.
+// Called only by approvals.service inside its resolution transaction, after DAT
+// quorum. FAIL-CLOSED: the audit row is written in the same transaction, so a
+// failed audit write rolls publication back. Returns a callback that runs only
+// after the transaction commits.
 export async function executePublish(
   electionId: string, officerId: string, tx: Prisma.TransactionClient
-): Promise<void> {
+): Promise<() => void> {
+  // The approval may be old: re-check the election is still closed.
+  const current = await tx.election.findUnique({ where: { id: electionId } });
+  if (!current || current.status !== "CLOSED") {
+    throw new ConflictError("Results can only be published for a closed election.");
+  }
+
   await tx.election.update({
     where: { id: electionId }, data: { status: "RESULTS_PUBLISHED", resultsPublishedAt: new Date() },
   });
   await resultsRepository.publishResults(electionId, tx);
 
-  await writeAuditLog({
+  await writeAuditLogInTransaction(tx, {
     actorId: officerId, action: "RESULTS_PUBLISHED", resourceType: "Election",
     resourceId: electionId, electionId, outcome: "SUCCESS",
   });
 
-  notifyAllActiveMembers({
-    type: "RESULTS_PUBLISHED", title: "Election results published",
-    message: `Results for this election have been published.`, electionId,
-  }).catch(() => {});
+  return () => {
+    notifyAllActiveMembers({
+      type: "RESULTS_PUBLISHED", title: "Election results published",
+      message: `Results for "${current.name}" have been published.`, electionId,
+    }).catch(() => {});
+  };
 }
 
 export async function getResults(

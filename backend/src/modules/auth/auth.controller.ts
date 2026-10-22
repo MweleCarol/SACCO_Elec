@@ -1,30 +1,22 @@
 import { Request, Response } from "express";
 import { sendSuccess } from "../../shared/responses/ApiResponse";
 import * as authService from "./auth.service";
-import {
-  RegisterInput,
-  LoginInput,
-  VerifyMfaInput,
-  MfaConfirmInput,
-  ChangePasswordInput,
-} from "./auth.schema";
-import { isProduction } from "../../config/env";
+import { RegisterInput, LoginInput, VerifyMfaInput, MfaConfirmInput, ChangePasswordInput } from "./auth.schema";
+import { env, isProduction } from "../../config/env";
 import { AuthError } from "../../shared/errors/AuthError";
+import { parseDurationMs } from "../../shared/utils/duration";
 
 const REFRESH_COOKIE_NAME = "refreshToken";
 
-// Centralizes cookie flags in one place — httpOnly (JS on the frontend can
-// never read it, closing off the main XSS exfiltration path), secure in
-// production only (plain HTTP in local dev has no TLS to require),
-// sameSite lax as a reasonable default for a same-site frontend/backend
-// pair; revisit to "none" + secure if the deployed frontend ever lives on
-// a genuinely different origin than what CORS_ORIGIN assumes.
-function setRefreshCookie(res: Response, token: string, expiresAt: Date): void {
+// httpOnly keeps the token away from frontend JavaScript, secure applies in
+// production only (local dev runs on plain HTTP), and the lifetime comes from
+// the same env value the server uses when it stores the token.
+function setRefreshCookie(res: Response, token: string): void {
   res.cookie(REFRESH_COOKIE_NAME, token, {
     httpOnly: true,
     secure: isProduction,
     sameSite: "lax",
-    expires: expiresAt,
+    maxAge: parseDurationMs(env.JWT_REFRESH_EXPIRES_IN),
     path: "/api/v1/auth",
   });
 }
@@ -49,8 +41,7 @@ export async function login(req: Request, res: Response): Promise<void> {
   }
 
   if (rawRefreshToken) {
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // matches JWT_REFRESH_EXPIRES_IN default; real value lives server-side on the token row itself
-    setRefreshCookie(res, rawRefreshToken, expiresAt);
+    setRefreshCookie(res, rawRefreshToken);
   }
 
   sendSuccess(res, result, "Login successful.");
@@ -58,13 +49,9 @@ export async function login(req: Request, res: Response): Promise<void> {
 
 export async function verifyMfa(req: Request, res: Response): Promise<void> {
   const body = res.locals.validated?.body as VerifyMfaInput;
-  const { session, rawRefreshToken } = await authService.verifyMfa(
-    body,
-    req.ip,
-  );
+  const { session, rawRefreshToken } = await authService.verifyMfa(body, req.ip);
 
-  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-  setRefreshCookie(res, rawRefreshToken, expiresAt);
+  setRefreshCookie(res, rawRefreshToken);
 
   sendSuccess(res, session, "Login successful.");
 }
@@ -75,13 +62,9 @@ export async function refresh(req: Request, res: Response): Promise<void> {
     throw new AuthError("No active session found.");
   }
 
-  const { accessToken, newRawRefreshToken } = await authService.refresh(
-    rawRefreshToken,
-    req.ip,
-  );
+  const { accessToken, newRawRefreshToken } = await authService.refresh(rawRefreshToken, req.ip);
 
-  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-  setRefreshCookie(res, newRawRefreshToken, expiresAt);
+  setRefreshCookie(res, newRawRefreshToken);
 
   sendSuccess(res, { accessToken }, "Token refreshed.");
 }
@@ -94,18 +77,12 @@ export async function logout(req: Request, res: Response): Promise<void> {
 }
 
 export async function me(req: Request, res: Response): Promise<void> {
-  // req.user is guaranteed present here — this route is always mounted
-  // behind `authenticate` in auth.routes.ts.
   sendSuccess(res, req.user, "Current session.");
 }
 
 export async function enrollMfa(req: Request, res: Response): Promise<void> {
   const result = await authService.enrollMfa(req.user!.id);
-  sendSuccess(
-    res,
-    result,
-    "Scan this QR code with your authenticator app, then confirm with a code.",
-  );
+  sendSuccess(res, result, "Scan this QR code with your authenticator app, then confirm with a code.");
 }
 
 export async function confirmMfa(req: Request, res: Response): Promise<void> {
@@ -114,15 +91,8 @@ export async function confirmMfa(req: Request, res: Response): Promise<void> {
   sendSuccess(res, null, "MFA enabled successfully.");
 }
 
-export async function changePassword(
-  req: Request,
-  res: Response,
-): Promise<void> {
+export async function changePassword(req: Request, res: Response): Promise<void> {
   const body = res.locals.validated?.body as ChangePasswordInput;
   await authService.changePassword(req.user!.id, body);
-  sendSuccess(
-    res,
-    null,
-    "Password changed. Please log in again on other devices.",
-  );
+  sendSuccess(res, null, "Password changed. Please log in again on other devices.");
 }
