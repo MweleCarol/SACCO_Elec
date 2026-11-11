@@ -85,5 +85,8 @@ export async function claimResolution(
 }
 
 export function markExecuted(requestId: string, tx: Prisma.TransactionClient) {
-  return tx.approvalRequest.update({ where: { id: requestId }, data: { executedAt: new Date() } });
+  return tx.approvalRequest.update({
+    where: { id: requestId },
+    data: { status: "EXECUTED", executedAt: new Date() },
+  });
 }

@@ -2,7 +2,11 @@ import { prisma } from "../../config/prisma";
 import { AuditOutcome, Prisma } from "@prisma/client";
 import { computeAuditHash, AUDIT_GENESIS_HASH } from "../../shared/utils/hash";
 import { logger } from "../../config/logger";
-import { toAuditLogDto, AuditLogDto, ChainVerificationResult } from "./audit.dto";
+import {
+  toAuditLogDto,
+  AuditLogDto,
+  ChainVerificationResult,
+} from "./audit.dto";
 import { ListAuditLogsQuery } from "./audit.schema";
 import * as auditRepository from "./audit.repository";
 import { NotFoundError } from "../../shared/errors/NotFoundError";
@@ -23,7 +27,10 @@ export interface WriteAuditLogInput {
 // takes it, so entries are appended one at a time and the chain cannot fork.
 const AUDIT_CHAIN_LOCK_KEY = 7265001;
 
-async function appendEntry(tx: Prisma.TransactionClient, input: WriteAuditLogInput): Promise<void> {
+async function appendEntry(
+  tx: Prisma.TransactionClient,
+  input: WriteAuditLogInput,
+): Promise<void> {
   // Transaction-scoped lock: released automatically on commit or rollback,
   // and re-entrant, so a transaction can write several entries.
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(${AUDIT_CHAIN_LOCK_KEY}::bigint)`;
@@ -88,8 +95,10 @@ export async function writeAuditLog(input: WriteAuditLogInput): Promise<void> {
 // throws on failure, so the action cannot commit without its audit record.
 export async function writeAuditLogInTransaction(
   tx: Prisma.TransactionClient,
-  input: WriteAuditLogInput
+  input: WriteAuditLogInput,
 ): Promise<void> {
+  if (input.action === "ELECTION_ACTIVATED")
+    throw new Error("TEMP simulated audit failure"); // DELETE AFTER TEST
   await appendEntry(tx, input);
 }
 
@@ -104,31 +113,52 @@ export async function listLogs(query: ListAuditLogsQuery) {
   return {
     logs: logs.map(toAuditLogDto),
     pagination: {
-      page: query.page, pageSize: query.pageSize, totalCount,
+      page: query.page,
+      pageSize: query.pageSize,
+      totalCount,
       totalPages: Math.ceil(totalCount / query.pageSize),
     },
   };
 }
 
-export async function verifyChain(dateFrom?: Date, dateTo?: Date): Promise<ChainVerificationResult> {
+export async function verifyChain(
+  dateFrom?: Date,
+  dateTo?: Date,
+): Promise<ChainVerificationResult> {
   const logs = await auditRepository.listForVerification(dateFrom, dateTo);
   const breaks: ChainVerificationResult["breaks"] = [];
 
-  let expectedPreviousHash = dateFrom ? logs[0]?.previousHash ?? AUDIT_GENESIS_HASH : AUDIT_GENESIS_HASH;
+  let expectedPreviousHash = dateFrom
+    ? (logs[0]?.previousHash ?? AUDIT_GENESIS_HASH)
+    : AUDIT_GENESIS_HASH;
 
   for (const log of logs) {
     if (log.previousHash !== expectedPreviousHash) {
-      breaks.push({ auditLogId: log.id, reason: "LINK_MISMATCH", createdAt: log.createdAt });
+      breaks.push({
+        auditLogId: log.id,
+        reason: "LINK_MISMATCH",
+        createdAt: log.createdAt,
+      });
     }
 
     const recomputed = computeAuditHash({
-      actorId: log.actorId, action: log.action, resourceType: log.resourceType,
-      resourceId: log.resourceId, electionId: log.electionId, outcome: log.outcome,
-      metadata: log.metadata, createdAt: log.createdAt.toISOString(), previousHash: log.previousHash,
+      actorId: log.actorId,
+      action: log.action,
+      resourceType: log.resourceType,
+      resourceId: log.resourceId,
+      electionId: log.electionId,
+      outcome: log.outcome,
+      metadata: log.metadata,
+      createdAt: log.createdAt.toISOString(),
+      previousHash: log.previousHash,
     });
 
     if (recomputed !== log.currentHash) {
-      breaks.push({ auditLogId: log.id, reason: "HASH_MISMATCH", createdAt: log.createdAt });
+      breaks.push({
+        auditLogId: log.id,
+        reason: "HASH_MISMATCH",
+        createdAt: log.createdAt,
+      });
     }
 
     expectedPreviousHash = log.currentHash;

@@ -1,12 +1,12 @@
 import { Request, Response, NextFunction } from "express";
 import { verifyAccessToken } from "../utils/jwt";
 import { AuthError } from "../errors/AuthError";
+import { findUserById } from "../../modules/auth/auth.repository";
 
-// Populates req.user from the Bearer token, or throws AuthError (caught by
-// the global error handler) if missing/invalid/expired. Every route past
-// this point can trust req.user without re-checking anything about the
-// token — see the AuthenticatedUser type in express.d.ts.
-export function authenticate(req: Request, res: Response, next: NextFunction): void {
+// Verifies the token, then loads the account. A suspended, deactivated or
+// deleted user, or a changed role, takes effect on the next request rather than
+// when the token expires. The role is read from the database, not the token.
+export async function authenticate(req: Request, res: Response, next: NextFunction): Promise<void> {
   const header = req.headers.authorization;
 
   if (!header || !header.startsWith("Bearer ")) {
@@ -16,6 +16,11 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
   const token = header.slice("Bearer ".length).trim();
   const payload = verifyAccessToken(token);
 
-  req.user = { id: payload.sub, role: payload.role };
+  const user = await findUserById(payload.sub);
+  if (!user || user.status !== "ACTIVE") {
+    throw new AuthError("Account is not active.");
+  }
+
+  req.user = { id: user.id, role: user.role };
   next();
 }

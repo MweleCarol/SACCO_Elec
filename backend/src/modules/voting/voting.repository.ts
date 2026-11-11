@@ -21,11 +21,10 @@ export function findParticipation(electionId: string, userId: string) {
   });
 }
 
-// Validates that every submitted candidateId is APPROVED and actually
-// belongs to the positionId it was submitted under, within this election —
-// prevents a client from voting for a candidate registered under a
-// different position, or one that was rejected/withdrawn after the ballot
-// was fetched but before it was submitted.
+// Every submitted candidate must be APPROVED and belong to the position it was
+// submitted under, within this election. This blocks voting for a candidate
+// registered under another position, or one rejected or withdrawn after the
+// ballot was fetched.
 export async function validateSelections(
   electionId: string,
   selections: { positionId: string; candidateId: string }[]
@@ -56,15 +55,10 @@ export async function validateSelections(
   return { valid: true };
 }
 
-// The transaction that actually records a vote. Participation is created
-// FIRST inside the transaction — its @@unique([electionId, userId])
-// constraint is the real, DB-level, concurrency-safe one-vote guarantee.
-// If two requests from the same member race each other, Postgres itself
-// guarantees only one Participation insert succeeds; the loser's whole
-// transaction (including its Vote inserts) rolls back automatically. This
-// is why eligibility is checked twice: once early for a fast, friendly
-// error, and again implicitly here via the constraint as the actual
-// authoritative gate.
+// Participation is created FIRST inside the transaction: its unique constraint
+// on (electionId, userId) is the real, concurrency-safe one-vote guarantee. If
+// two requests race, Postgres lets one Participation insert succeed and rolls
+// back the other transaction, including its Vote inserts.
 export async function recordVote(
   electionId: string,
   userId: string,
@@ -73,6 +67,14 @@ export async function recordVote(
   const participation = await prisma.$transaction(async (tx) => {
     const created = await tx.participation.create({ data: { electionId, userId } });
 
+    // Vote rows get a constant timestamp, the election's start. A real castAt
+    // would be identical or within milliseconds of Participation.votedAt, which
+    // lets anyone who can read the database match a voter to their votes.
+    const election = await tx.election.findUniqueOrThrow({
+      where: { id: electionId },
+      select: { startDate: true },
+    });
+
     await tx.vote.createMany({
       data: votes.map((v) => ({
         electionId,
@@ -80,6 +82,7 @@ export async function recordVote(
         candidateId: v.candidateId,
         encryptedPayload: v.encryptedPayload,
         anonymousToken: v.anonymousToken,
+        castAt: election.startDate,
       })),
     });
 
