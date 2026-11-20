@@ -26,6 +26,18 @@ describe("auth rate limiter (per IP)", () => {
     }
   });
 
+    // Regression: every logged-out page load calls /auth/refresh, which fails
+  // without a cookie. Those failures must not use up the login budget.
+  it("failed refresh calls (logged-out page loads) do not block logins", async () => {
+    const app = appWithLimit("10");
+    const u = await createUser("AUDITOR");
+    for (let i = 0; i < 15; i++) {
+      expect((await request(app).post("/api/v1/auth/refresh").send({})).status).toBe(401);
+    }
+    const res = await request(app).post("/api/v1/auth/login").send({ email: u.email, password: TEST_PASSWORD });
+    expect(res.status).toBe(200);
+  });
+
   it("blocks the 11th failed attempt from one IP with the per-IP message", async () => {
     const app = appWithLimit("10");
     const statuses: number[] = [];
