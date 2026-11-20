@@ -21,7 +21,7 @@ import {
   Trophy,
 } from "lucide-react";
 import { useCurrentMember } from "@/hooks/useCurrentMember";
-import { clearSession } from "@/lib/session";
+import { useAuth } from "@/contexts/AuthContext";
 import { formatRoleLabel } from "@/lib/format";
 import type { UserRole } from "@/types/member";
 
@@ -122,14 +122,14 @@ interface RoleSidebarProps {
 export function RoleSidebar({ role }: RoleSidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const { logout } = useAuth();
   const { member } = useCurrentMember();
   const config = NAV_CONFIG[role];
 
-  function handleLogout() {
-    clearSession();
+  async function handleLogout() {
+    await logout(); // revokes the session on the server, not just in this tab
     router.push("/login");
   }
-
   return (
     <aside className="hidden h-full w-64 shrink-0 flex-col bg-[var(--sevs-navy)] text-white md:flex">
       <div className="flex items-center gap-2 px-6 py-6">

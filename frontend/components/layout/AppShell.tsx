@@ -1,33 +1,47 @@
 "use client";
 
-import type { ReactNode } from "react";
-import { usePathname } from "next/navigation";
-import { useCurrentMember } from "@/hooks/useCurrentMember";
+import { useEffect, type ReactNode } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useAuth } from "@/contexts/AuthContext";
 import { RoleSidebar } from "@/components/layout/RoleSidebar";
-import type { UserRole } from "@/types/member";
 
-const PUBLIC_PATHS = ["/", "/login", "/register", "/forgot-password"];
+const PUBLIC_PATHS = ["/", "/login", "/register"];
 
-// The AppShell component serves as the main layout for the application, determining which sidebar to display based on the user's role and the current path. 
-// It checks if the current path is public, and if so, it renders the children directly.
-//  If the user is still loading, it shows a loading state. 
-// Depending on whether the user is a member or has a specific role, it renders either the VoterSidebar or the RoleSidebar with appropriate navigation items.
-
+// Decides what wraps each page:
+// - public pages (login, register) render on their own;
+// - every other page needs a logged-in user, and gets the role's sidebar.
+//
+// This check runs in the browser because the session lives in a cookie that
+// belongs to the backend's address, which the Next.js server cannot see. It
+// only decides what to show: the backend enforces every permission itself.
 export function AppShell({ children }: { children: ReactNode }) {
-  const pathname = usePathname();
-  const { member, isLoading } = useCurrentMember();
+  const pathname = usePathname() ?? "/";
+  const router = useRouter();
+  const { user, status } = useAuth();
+  const isPublic = PUBLIC_PATHS.includes(pathname);
 
-  if (PUBLIC_PATHS.includes(pathname ?? "")) {
-    return <>{children}</>;
-  }
+  useEffect(() => {
+    if (!isPublic && status === "anonymous") {
+      // Come back to this page after logging in.
+      router.replace(`/login?next=${encodeURIComponent(pathname)}`);
+    }
+  }, [isPublic, status, pathname, router]);
 
-  if (isLoading) {
-    return <div className="min-h-screen bg-[var(--sevs-bg)]" />;
+  if (isPublic) return <>{children}</>;
+
+  if (status !== "authenticated" || !user) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[var(--sevs-bg)]" role="status" aria-live="polite">
+        <p className="text-sm text-[var(--sevs-text-muted)]">
+          {status === "loading" ? "Checking your session…" : "Redirecting to login…"}
+        </p>
+      </div>
+    );
   }
 
   return (
     <div className="flex h-screen bg-[var(--sevs-bg)]">
-      <RoleSidebar role={member?.role ?? "MEMBER"} />
+      <RoleSidebar role={user.role} />
       <div className="flex-1 overflow-y-auto">{children}</div>
     </div>
   );

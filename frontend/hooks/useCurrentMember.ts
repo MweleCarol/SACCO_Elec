@@ -1,30 +1,34 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { getCurrentMemberId, onSessionChange } from "@/lib/session";
-import { getMemberById } from "@/services/mock/members";
+import { useAuth } from "@/contexts/AuthContext";
 import type { Member } from "@/types/member";
+import type { User } from "@/types/api";
 
 interface CurrentMemberState {
   member: Member | null;
   isLoading: boolean;
 }
 
-function readMember(): CurrentMemberState {
-  const id = getCurrentMemberId();
-  return { member: id ? (getMemberById(id) ?? null) : null, isLoading: false };
+// Bridge for screens that still use the older Member shape. Identity now comes
+// from the real login (AuthContext); each screen moves to useAuth() and the
+// types in types/api.ts as it is connected to the API.
+function toMember(user: User): Member {
+  return {
+    id: user.id,
+    name: user.fullName,
+    email: user.email,
+    membershipNumber: user.membershipNumber ?? undefined,
+    role: user.role,
+    branch: "", // not returned by the API yet (see API_CONTRACT.md section 6)
+    mfaEnabled: user.mfaEnabled,
+    isOnline: true,
+    avatarUrl: "",
+    createdAt: "",
+    status: user.status === "SUSPENDED" ? "SUSPENDED" : "ACTIVE",
+  };
 }
 
 export function useCurrentMember(): CurrentMemberState {
-  const [state, setState] = useState<CurrentMemberState>({
-    member: null,
-    isLoading: true,
-  });
-
-  useEffect(() => {
-    setState(readMember());
-    return onSessionChange(() => setState(readMember()));
-  }, []);
-
-  return state;
+  const { user, status } = useAuth();
+  return { member: user ? toMember(user) : null, isLoading: status === "loading" };
 }

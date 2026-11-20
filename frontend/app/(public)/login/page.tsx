@@ -1,42 +1,117 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { loginSchema, type LoginFormValues } from "@/lib/validation/auth";
-import { mockLogin } from "@/services/mock/auth";
+import { loginSchema, mfaCodeSchema, type LoginFormValues, type MfaCodeFormValues } from "@/lib/validation/auth";
+import { useAuth } from "@/contexts/AuthContext";
+import { isMfaChallenge } from "@/types/api";
+import { getApiErrorMessage, getApiStatus } from "@/services/api/errors";
 import { AuthShell } from "@/components/auth/AuthShell";
 import { FormField } from "@/components/ui/FormField";
 import { PasswordField } from "@/components/ui/PasswordField";
 import { Button } from "@/components/ui/button";
-import { setCurrentMemberId } from "@/lib/session";
 
-export default function LoginPage() {
+// Only follow ?next= to pages inside this app (never to another website).
+function safeNext(next: string | null): string {
+  return next && next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard";
+}
+
+function ErrorBox({ message }: { message: string }) {
+  return (
+    <p role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
+      {message}
+    </p>
+  );
+}
+
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const { login, verifyMfa } = useAuth();
+  const destination = safeNext(searchParams.get("next"));
+  const justRegistered = searchParams.get("registered") === "1";
+
   const [serverError, setServerError] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  // Set when the password was right but the account also needs an MFA code.
+  const [mfaChallengeToken, setMfaChallengeToken] = useState<string | null>(null);
 
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-  } = useForm<LoginFormValues>({ resolver: zodResolver(loginSchema) });
+  const credentials = useForm<LoginFormValues>({ resolver: zodResolver(loginSchema) });
+  const mfa = useForm<MfaCodeFormValues>({ resolver: zodResolver(mfaCodeSchema) });
 
-  async function onSubmit(values: LoginFormValues) {
+  async function onSubmitCredentials(values: LoginFormValues) {
     setServerError(null);
-    setIsSubmitting(true);
-    const result = await mockLogin(values);
-    setIsSubmitting(false);
-
-    if (!result.success) {
-      setServerError(result.message);
-      return;
+    try {
+      const result = await login(values.email, values.password);
+      if (isMfaChallenge(result)) {
+        setMfaChallengeToken(result.mfaChallengeToken);
+        return;
+      }
+      router.replace(destination);
+    } catch (err) {
+      setServerError(getApiErrorMessage(err, "Login failed. Please try again."));
     }
+  }
 
-    setCurrentMemberId(result.user!.id);
-    router.push("/dashboard");
+  async function onSubmitCode(values: MfaCodeFormValues) {
+    if (!mfaChallengeToken) return;
+    setServerError(null);
+    try {
+      await verifyMfa(mfaChallengeToken, values.totpCode);
+      router.replace(destination);
+    } catch (err) {
+      setServerError(getApiErrorMessage(err, "Verification failed. Please try again."));
+      mfa.resetField("totpCode");
+      // The challenge lasts 5 minutes; after a lockout or expiry, start over.
+      if (getApiStatus(err) === 429 || /expired|log in again/i.test(getApiErrorMessage(err))) {
+        setMfaChallengeToken(null);
+      }
+    }
+  }
+
+  function startOver() {
+    setMfaChallengeToken(null);
+    setServerError(null);
+    mfa.reset();
+  }
+
+  if (mfaChallengeToken) {
+    return (
+      <AuthShell
+        title="Enter your security code"
+        subtitle="Open your authenticator app and enter the 6-digit code for SEVS."
+        footerNote="Codes change every 30 seconds. Each code can be used once."
+      >
+        <form onSubmit={mfa.handleSubmit(onSubmitCode)} noValidate>
+          <FormField
+            label="6-digit code"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            maxLength={6}
+            placeholder="123456"
+            autoFocus
+            className="text-center font-mono text-lg tracking-[0.4em]"
+            error={mfa.formState.errors.totpCode?.message}
+            {...mfa.register("totpCode")}
+          />
+
+          {serverError && <ErrorBox message={serverError} />}
+
+          <Button type="submit" isLoading={mfa.formState.isSubmitting}>
+            Verify and continue
+          </Button>
+          <button
+            type="button"
+            onClick={startOver}
+            className="mt-3 w-full text-center text-sm font-bold text-[var(--sevs-navy)] hover:underline"
+          >
+            Use a different account
+          </button>
+        </form>
+      </AuthShell>
+    );
   }
 
   return (
@@ -47,53 +122,55 @@ export default function LoginPage() {
       bottomLink={
         <span className="text-[var(--sevs-text-muted)]">
           Don&apos;t have an account?{" "}
-          <Link
-            href="/register"
-            className="font-bold text-[var(--sevs-navy)] hover:underline"
-          >
+          <Link href="/register" className="font-bold text-[var(--sevs-navy)] hover:underline">
             Register
           </Link>
         </span>
       }
     >
-      <form onSubmit={handleSubmit(onSubmit)} noValidate>
-        <FormField
-          label="Email Address"
-          type="email"
-          placeholder="Enter your email address"
-          error={errors.email?.message}
-          {...register("email")}
-        />
-        <PasswordField
-          label="Password"
-          placeholder="Enter your password"
-          error={errors.password?.message}
-          {...register("password")}
-        />
-
-        <div className="mb-4 text-right">
-          <Link
-            href="/forgot-password"
-            className="text-sm font-bold text-[var(--sevs-navy)] hover:underline"
-          >
-            Forgot password?
-          </Link>
-        </div>
-
-        {serverError && (
-          <p className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
-            {serverError}
+      <form onSubmit={credentials.handleSubmit(onSubmitCredentials)} noValidate>
+        {justRegistered && (
+          <p role="status" className="mb-4 rounded-lg bg-green-50 px-4 py-3 text-sm text-green-800">
+            Registration successful. You can now log in.
           </p>
         )}
 
-        <Button type="submit" isLoading={isSubmitting}>
+        <FormField
+          label="Email Address"
+          type="email"
+          autoComplete="email"
+          placeholder="Enter your email address"
+          error={credentials.formState.errors.email?.message}
+          {...credentials.register("email")}
+        />
+        <PasswordField
+          label="Password"
+          autoComplete="current-password"
+          placeholder="Enter your password"
+          error={credentials.formState.errors.password?.message}
+          {...credentials.register("password")}
+        />
+
+        {serverError && <ErrorBox message={serverError} />}
+
+        <Button type="submit" isLoading={credentials.formState.isSubmitting}>
           Login
         </Button>
 
+        {/* No self-service reset exists yet, so say what to do instead of linking to a missing page. */}
         <p className="mt-4 text-center text-sm text-[var(--sevs-text-muted)]">
-          Your account may require multi-factor authentication.
+          Forgot your password? Contact your SACCO office to reset it.
         </p>
       </form>
     </AuthShell>
+  );
+}
+
+// useSearchParams needs a Suspense boundary in the App Router.
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
   );
 }

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { LogOut, X, ShieldCheck } from "lucide-react";
-import { clearSession } from "@/lib/session";
+import { useAuth } from "@/contexts/AuthContext";
 import { NAV_CONFIG } from "@/components/layout/RoleSidebar";
 import { formatRoleLabel } from "@/lib/format";
 import type { UserRole } from "@/types/member";
@@ -15,12 +15,13 @@ interface MobileNavDrawerProps {
 
 export function MobileNavDrawer({ role, onClose }: MobileNavDrawerProps) {
   const router = useRouter();
+  const { logout } = useAuth();
   const pathname = usePathname();
   const config = NAV_CONFIG[role];
 
-  function handleLogout() {
-    clearSession();
+  async function handleLogout() {
     onClose();
+    await logout(); // revokes the session on the server, not just in this tab
     router.push("/login");
   }
 
