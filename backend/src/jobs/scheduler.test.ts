@@ -104,22 +104,20 @@ describe("approval request expiry", () => {
     expect(log.metadata).toMatchObject({ approvalRequestId: ids[0], trigger: "SCHEDULED" });
   });
 });
-
 describe("startScheduler", () => {
-  it("runs a pass immediately on start and can be stopped", async () => {
+  it("runs a pass immediately on start, and stop() waits for it to finish", async () => {
     const officer = await createUser("ELECTION_OFFICER");
+    const member = await createUser("MEMBER");
     const e = await endedActiveElection(officer.id);
+
     const stop = startScheduler(60_000);
-    try {
-      const status = await waitFor(
-        async () => (await prisma.election.findUniqueOrThrow({ where: { id: e.id } })).status,
-        (s) => s === "CLOSED"
-      );
-      expect(status).toBe("CLOSED");
-    } finally {
-      stop();
-    }
-    // Let the in-flight notification finish before the database is reset.
-    await waitFor(() => prisma.notification.count(), () => true, 200);
+    await stop(); // returns only once the first pass is completely done
+
+    expect((await prisma.election.findUniqueOrThrow({ where: { id: e.id } })).status).toBe("CLOSED");
+    expect(await prisma.auditLog.count({ where: { action: "ELECTION_CLOSED", electionId: e.id } })).toBe(1);
+    // The member notification is fire-and-forget; wait for it so nothing is
+    // still writing when the next test resets the database.
+    const n = await waitFor(() => prisma.notification.count({ where: { userId: member.id } }), (c) => c > 0);
+    expect(n).toBe(1);
   });
 });

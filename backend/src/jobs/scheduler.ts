@@ -26,25 +26,33 @@ export async function runScheduledTasks(now: Date = new Date()): Promise<Schedul
   return { electionsClosed, approvalRequestsExpired };
 }
 
-// Starts the timer and returns a stop function for graceful shutdown.
-export function startScheduler(intervalMs: number): () => void {
-  let running = false;
+// Starts the timer and returns a stop function for graceful shutdown. The
+// stop function waits for a pass that is already running, so nothing writes
+// to the database after the caller disconnects it.
+export function startScheduler(intervalMs: number): () => Promise<void> {
+  let inFlight: Promise<void> | null = null;
 
-  const tick = async (): Promise<void> => {
-    if (running) return; // a slow pass is still going; skip this tick
-    running = true;
-    try {
-      await runScheduledTasks();
-    } catch (err) {
-      // Never crash the server over a background job; try again next tick.
-      logger.error("Scheduled tasks failed", { message: err instanceof Error ? err.message : String(err) });
-    } finally {
-      running = false;
-    }
+  const tick = (): Promise<void> => {
+    if (inFlight) return inFlight; // a slow pass is still going; skip this tick
+    inFlight = (async () => {
+      try {
+        await runScheduledTasks();
+      } catch (err) {
+        // Never crash the server over a background job; try again next tick.
+        logger.error("Scheduled tasks failed", { message: err instanceof Error ? err.message : String(err) });
+      } finally {
+        inFlight = null;
+      }
+    })();
+    return inFlight;
   };
 
   void tick(); // catch up straight away after a restart
   const timer = setInterval(() => void tick(), intervalMs);
   logger.info("Scheduler started", { intervalMs });
-  return () => clearInterval(timer);
+
+  return async () => {
+    clearInterval(timer);
+    if (inFlight) await inFlight;
+  };
 }

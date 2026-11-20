@@ -16,12 +16,14 @@ async function main(): Promise<void> {
     logger.info(`SEVS backend listening on port ${env.PORT}`, { env: env.NODE_ENV });
   });
 
-  const stopScheduler = env.SCHEDULER_ENABLED ? startScheduler(env.SCHEDULER_INTERVAL_MS) : () => {};
+  const stopScheduler = env.SCHEDULER_ENABLED
+    ? startScheduler(env.SCHEDULER_INTERVAL_MS)
+    : async () => {};
 
   async function shutdown(signal: string): Promise<void> {
     logger.info(`${signal} received — shutting down gracefully.`);
-    stopScheduler();
     server.close(async () => {
+      await stopScheduler(); // let a running pass finish before disconnecting
       await disconnectPrisma();
       logger.info("Shutdown complete.");
       process.exit(0);

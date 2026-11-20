@@ -1,8 +1,7 @@
 import { prisma } from "../../config/prisma";
 import { computeAuditHash } from "../../shared/utils/hash";
 import { writeAuditLog } from "./audit.service";
-import { api, bearer, createUser } from "../../../tests/helpers";
-
+import { api, bearer, createCandidate, createElection, createPosition, createUser } from "../../../tests/helpers";
 async function writeSome(n: number, actorId: string) {
   for (let i = 0; i < n; i++) {
     await writeAuditLog({ actorId, action: "TEST_EVENT", outcome: "SUCCESS", metadata: { i, nested: { b: 2, a: 1 } } });
@@ -67,6 +66,25 @@ describe("audit API", () => {
     await prisma.auditLog.delete({ where: { id: rows[4].id } });
     const deleted = await api().get("/api/v1/audit-logs/verify-chain").set(bearer(auditor));
     expect(deleted.body.data.breaks).toEqual([expect.objectContaining({ auditLogId: rows[5].id, reason: "LINK_MISMATCH" })]);
+  });
+
+    // Regression: approvals made without a comment wrote metadata
+  // { comment: undefined }. Postgres stores that as {}, so the recomputed hash
+  // never matched and verify-chain reported tampering that never happened.
+  it("stays intact after actions whose metadata contains undefined values", async () => {
+    const auditor = await createUser("AUDITOR");
+    const officer = await createUser("ELECTION_OFFICER");
+    const admin = await createUser("ELECTION_ADMINISTRATOR");
+    const e = await createElection(officer.id, { status: "PENDING_APPROVAL" });
+    const p = await createPosition(e.id);
+    const c = await createCandidate(e.id, p.id, "PENDING_REVIEW");
+
+    expect((await api().post(`/api/v1/candidates/${c.id}/approve`).set(bearer(officer)).send({ decision: "APPROVE" })).status).toBe(200);
+    expect((await api().post(`/api/v1/elections/${e.id}/review-approval`).set(bearer(admin)).send({ decision: "APPROVE" })).status).toBe(200);
+    await writeAuditLog({ actorId: officer.id, action: "TEST_EVENT", outcome: "SUCCESS", metadata: { a: undefined, when: new Date(0) } });
+
+    const res = await api().get("/api/v1/audit-logs/verify-chain").set(bearer(auditor));
+    expect(res.body.data).toMatchObject({ intact: true, breaks: [] });
   });
 
   it("a date-ranged verification checks only that range", async () => {

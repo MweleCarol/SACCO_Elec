@@ -27,6 +27,16 @@ function canonicalStringify(value: unknown): string {
   return `{${parts.join(",")}}`;
 }
 
+// The metadata exactly as Postgres will store it. jsonb holds JSON, so a key
+// whose value is undefined is dropped and a Date becomes an ISO string. Hashing
+// the in-memory object instead (e.g. { comment: undefined } from an approval
+// with no comment) produced a hash the stored row ({}) could never reproduce,
+// so verify-chain reported honest entries as tampered.
+function asStoredJson(value: unknown): unknown {
+  if (value === undefined) return null;
+  return JSON.parse(JSON.stringify(value));
+}
+
 export function computeAuditHash(input: AuditHashInput): string {
   const canonical = [
     input.previousHash,
@@ -36,7 +46,7 @@ export function computeAuditHash(input: AuditHashInput): string {
     input.resourceId ?? "",
     input.electionId ?? "",
     input.outcome,
-    canonicalStringify(input.metadata ?? null),
+    canonicalStringify(asStoredJson(input.metadata) ?? null),
     input.createdAt,
   ].join("|");
 

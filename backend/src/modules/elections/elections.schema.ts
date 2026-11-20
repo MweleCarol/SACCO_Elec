@@ -27,8 +27,8 @@ export type CreateElectionInput = z.infer<typeof createElectionSchema>;
 export const updateElectionSchema = z.object({
   name: z.string().trim().min(3).optional(),
   description: z.string().trim().optional(),
-  startDate: z.coerce.date().optional(),
-  endDate: z.coerce.date().optional(),
+  startDate: z.coerce.date({ error: "Enter a valid start date and time." }).optional(),
+  endDate: z.coerce.date({ error: "Enter a valid end date and time." }).optional(),
   requiredApprovals: z.coerce.number().int().min(1).max(10).optional(),
 });
 
@@ -36,8 +36,8 @@ export type UpdateElectionInput = z.infer<typeof updateElectionSchema>;
 
 export const rescheduleElectionSchema = z
   .object({
-    startDate: z.coerce.date(),
-    endDate: z.coerce.date(),
+    startDate: z.coerce.date({ error: "Enter a valid start date and time." }),
+    endDate: z.coerce.date({ error: "Enter a valid end date and time." }),
   })
   .refine((data) => data.endDate > data.startDate, {
     message: "End date must be after start date.",
