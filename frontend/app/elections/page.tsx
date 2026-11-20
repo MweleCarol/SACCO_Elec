@@ -3,58 +3,30 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useCurrentMember } from "@/hooks/useCurrentMember";
+import { useElectionList, useParticipationFor } from "@/hooks/useElections";
 import { Topbar } from "@/components/layout/Topbar";
 import { ElectionListCard } from "@/components/voter/ElectionListCard";
-import {
-  getMemberVisibleElections,
-  getComputedLifecycleStatus,
-} from "@/services/mock/elections";
-import type { LifecycleStatus } from "@/types/election";
+import { EmptyState, ErrorPanel, LoadingCards } from "@/components/ui/LoadState";
+import { memberPhase, type MemberPhase } from "@/lib/electionStatus";
+import { getApiErrorMessage } from "@/services/api/errors";
 import { ElectionManagementTable } from "@/components/officer/ElectionManagementTable";
 
-type TabKey = "ALL" | "ACTIVE" | "UPCOMING" | "CLOSED";
+type TabKey = "OPEN" | "UPCOMING" | "PAST" | "ALL";
 
-const TABS: { key: TabKey; label: string }[] = [
-  { key: "ALL", label: "All" },
-  { key: "ACTIVE", label: "Active" },
-  { key: "UPCOMING", label: "Upcoming" },
-  { key: "CLOSED", label: "Closed" },
+const TABS: { key: TabKey; label: string; phases: MemberPhase[] }[] = [
+  { key: "OPEN", label: "Open now", phases: ["OPEN"] },
+  { key: "UPCOMING", label: "Upcoming", phases: ["UPCOMING"] },
+  { key: "PAST", label: "Past", phases: ["ENDED", "RESULTS", "CANCELLED"] },
+  { key: "ALL", label: "All", phases: ["OPEN", "UPCOMING", "ENDED", "RESULTS", "CANCELLED"] },
 ];
 
-function matchesTab(lifecycle: LifecycleStatus, tab: TabKey): boolean {
-  if (tab === "ALL") return true;
-  if (tab === "ACTIVE") return lifecycle === "ACTIVE";
-  if (tab === "UPCOMING") return lifecycle === "SCHEDULED";
-  return (
-    lifecycle === "CLOSED" ||
-    lifecycle === "RESULTS_PUBLISHED" ||
-    lifecycle === "ARCHIVED"
-  );
-}
-
-export default function VoterElectionsPage() {
+export default function ElectionsPage() {
   const { member, isLoading } = useCurrentMember();
-  const [tab, setTab] = useState<TabKey>("ALL");
 
-  if (isLoading) return null;
+  if (isLoading || !member) return null; // AppShell shows the loading/redirect state
 
-  if (!member) {
-    return (
-      <div className="p-8">
-        <p className="text-[var(--sevs-text-muted)]">
-          You&apos;re not signed in.{" "}
-          <a
-            href="/login"
-            className="font-bold text-[var(--sevs-navy)] hover:underline"
-          >
-            Log in
-          </a>{" "}
-          to view elections.
-        </p>
-      </div>
-    );
-  }
-
+  // Officers and administrators still see the management table (mock data
+  // until the Officer portal is connected).
   const isOfficerOrAdmin =
     member.role === "ELECTION_OFFICER" || member.role === "ELECTION_ADMINISTRATOR";
 
@@ -78,43 +50,68 @@ export default function VoterElectionsPage() {
     );
   }
 
-  const elections = getMemberVisibleElections()
-    .map((e) => ({ election: e, lifecycle: getComputedLifecycleStatus(e) }))
-    .filter(({ lifecycle }) => matchesTab(lifecycle, tab))
-    .map(({ election }) => election);
+  return <MemberElections canVote={member.role === "MEMBER"} />;
+}
+
+// Members, and auditors (who see the same list read-only and cannot vote).
+function MemberElections({ canVote }: { canVote: boolean }) {
+  const [tab, setTab] = useState<TabKey>("OPEN");
+  const elections = useElectionList();
+  const all = elections.data ?? [];
+  // "Have I voted?" is only asked for elections open right now.
+  const open = all.filter((e) => memberPhase(e) === "OPEN");
+  const participation = useParticipationFor(canVote ? open : []);
+
+  const phases = TABS.find((t) => t.key === tab)!.phases;
+  const shown = all
+    .filter((e) => phases.includes(memberPhase(e)))
+    .sort((a, b) => new Date(a.endDate).getTime() - new Date(b.endDate).getTime());
 
   return (
     <>
-      <Topbar
-        title="Elections"
-        subtitle="Elections you're eligible to participate in"
-      />
+      <Topbar title="Elections" subtitle="SACCO elections you can take part in" />
 
       <div className="space-y-6 p-4 sm:p-8">
-        <div className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4 sm:mx-0 sm:px-0">
-          {TABS.map(({ key, label }) => (
-            <button
-              key={key}
-              onClick={() => setTab(key)}
-              className={`shrink-0 whitespace-nowrap rounded-lg border px-4 py-2 text-sm font-bold transition ${
-                tab === key
-                  ? "border-[var(--sevs-navy)] bg-[var(--sevs-navy)] text-white"
-                  : "border-[var(--sevs-border)] bg-white text-[var(--sevs-text-muted)] hover:bg-gray-50"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
+        <div role="tablist" aria-label="Filter elections" className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
+          {TABS.map(({ key, label, phases: tabPhases }) => {
+            const count = all.filter((e) => tabPhases.includes(memberPhase(e))).length;
+            return (
+              <button
+                key={key}
+                role="tab"
+                aria-selected={tab === key}
+                onClick={() => setTab(key)}
+                className={`shrink-0 whitespace-nowrap rounded-lg border px-4 py-2 text-sm font-bold transition ${
+                  tab === key
+                    ? "border-[var(--sevs-navy)] bg-[var(--sevs-navy)] text-white"
+                    : "border-[var(--sevs-border)] bg-white text-[var(--sevs-text-muted)] hover:bg-gray-50"
+                }`}
+              >
+                {label}
+                {elections.isSuccess && <span className="ml-1.5">({count})</span>}
+              </button>
+            );
+          })}
         </div>
 
+        {elections.isLoading && <LoadingCards label="Loading elections…" />}
+        {elections.isError && (
+          <ErrorPanel message={getApiErrorMessage(elections.error)} onRetry={() => elections.refetch()} />
+        )}
+
+        {elections.isSuccess && shown.length === 0 && (
+          <EmptyState title={tab === "OPEN" ? "No elections are open for voting right now" : "No elections here"}>
+            {tab === "OPEN" && "You'll get a notification as soon as voting opens."}
+          </EmptyState>
+        )}
+
         <div className="space-y-4">
-          {elections.length === 0 && (
-            <p className="text-sm text-[var(--sevs-text-muted)]">
-              No elections match this filter.
-            </p>
-          )}
-          {elections.map((election) => (
-            <ElectionListCard key={election.id} election={election} />
+          {shown.map((election) => (
+            <ElectionListCard
+              key={election.id}
+              election={election}
+              participation={participation.byElection.get(election.id)}
+            />
           ))}
         </div>
       </div>

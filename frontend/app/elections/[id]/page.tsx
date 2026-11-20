@@ -7,6 +7,7 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { DatBadge } from "@/components/officer/DatBadge";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useCurrentMember } from "@/hooks/useCurrentMember";
+import { MemberElectionDetail } from "@/components/voter/MemberElectionDetail";
 import { getElectionById, getComputedLifecycleStatus, getDisplayStatus, submitElectionForApproval } from "@/services/mock/elections";
 import { getCandidatesByElection } from "@/services/mock/candidates";
 import { getApprovalsForTarget, requestApproval, formatApprovalType } from "@/services/mock/approvals";
@@ -19,6 +20,9 @@ export default function ElectionDetailPage() {
   const [, rerender] = useState(0);
 
   if (isLoading) return null;
+  // Members get a read-only view with real data; the staff view below still
+  // uses mock data until the Officer portal is connected.
+  if (member?.role === "MEMBER") return <MemberElectionDetail id={id} />;
   if (!member || !["ELECTION_OFFICER", "ELECTION_ADMINISTRATOR", "AUDITOR"].includes(member.role)) {
     return <div className="p-8"><p className="text-[var(--sevs-text-muted)]">You don&apos;t have access to this page.</p></div>;
   }
