@@ -351,7 +351,7 @@ export default function VoterCandidatesPage() {
   }
 
   const isOfficerOrAdmin =
-    member.role === "ELECTION_OFFICER" || member.role === "ADMINISTRATOR";
+    member.role === "ELECTION_OFFICER" || member.role === "ELECTION_ADMINISTRATOR";
 
   return isOfficerOrAdmin ? (
     <OfficerCandidatesView />

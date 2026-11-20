@@ -5,7 +5,7 @@ export const mockUsers: Member[] = [
     id: "usr-admin-001",
     name: "Admin User",
     email: "admin.user@sacco.co.ke",
-    role: "ADMINISTRATOR",
+    role: "ELECTION_ADMINISTRATOR",
     branch: "Head Office",
     mfaEnabled: true,
     isOnline: true, // matches "Admin User • Online" in screenshot

@@ -56,7 +56,7 @@ export default function VoterElectionsPage() {
   }
 
   const isOfficerOrAdmin =
-    member.role === "ELECTION_OFFICER" || member.role === "ADMINISTRATOR";
+    member.role === "ELECTION_OFFICER" || member.role === "ELECTION_ADMINISTRATOR";
 
   if (isOfficerOrAdmin) {
     return (

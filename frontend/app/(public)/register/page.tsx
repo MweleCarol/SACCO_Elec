@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { registerSchema, type RegisterFormValues } from "@/lib/validation/auth";
+import { PASSWORD_RULES_HINT, registerSchema, type RegisterFormValues } from "@/lib/validation/auth";
 import { mockRegister } from "@/services/mock/auth";
 import { AuthShell } from "@/components/auth/AuthShell";
 import { FormField } from "@/components/ui/FormField";
@@ -67,13 +67,16 @@ export default function RegisterPage() {
         />
         <FormField
           label="Full Name"
-          placeholder="Enter your full name"
+          placeholder="As registered with the SACCO"
+          autoComplete="name"
           error={errors.fullName?.message}
           {...register("fullName")}
         />
         <PasswordField
           label="Password"
-          placeholder="Enter your password"
+          placeholder="Create a password"
+          hint={PASSWORD_RULES_HINT}
+          autoComplete="new-password"
           error={errors.password?.message}
           {...register("password")}
         />

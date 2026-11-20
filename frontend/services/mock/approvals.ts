@@ -21,7 +21,7 @@ function makeApproval(
     status: "PENDING",
     stages: [
       { role: "ELECTION_OFFICER", status: "PENDING" },
-      { role: "ADMINISTRATOR", status: "PENDING" },
+      { role: "ELECTION_ADMINISTRATOR", status: "PENDING" },
     ],
   };
 }
@@ -76,7 +76,7 @@ export function requestApprovalWithOfficerPreApproved(
     status: "PENDING",
     stages: [
       { role: "ELECTION_OFFICER", status: "APPROVED", approverName: officerName, decidedAt: new Date().toISOString() },
-      { role: "ADMINISTRATOR", status: "PENDING" },
+      { role: "ELECTION_ADMINISTRATOR", status: "PENDING" },
     ],
   };
   mockApprovals.push(approval);
@@ -106,7 +106,7 @@ export function hasAlreadyActedOnApproval(approval: Approval, approverName: stri
  */
 export function decideStage(
   approvalId: string,
-  role: "ELECTION_OFFICER" | "ADMINISTRATOR",
+  role: "ELECTION_OFFICER" | "ELECTION_ADMINISTRATOR",
   decision: ApprovalStageStatus,
   approverName: string,
   reason?: string

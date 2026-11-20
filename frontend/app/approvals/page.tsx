@@ -23,11 +23,11 @@ export default function ApprovalsPage() {
   const [, forceRerender] = useState(0);
 
   if (isLoading) return null;
-  if (!member || !["ELECTION_OFFICER", "ADMINISTRATOR"].includes(member.role)) {
+  if (!member || !["ELECTION_OFFICER", "ELECTION_ADMINISTRATOR"].includes(member.role)) {
     return <div className="p-8"><p className="text-[var(--sevs-text-muted)]">You don&apos;t have access to this page.</p></div>;
   }
 
-  const actingRole = member.role as "ELECTION_OFFICER" | "ADMINISTRATOR";
+  const actingRole = member.role as "ELECTION_OFFICER" | "ELECTION_ADMINISTRATOR";
 
   const list = mockApprovals.filter((a) => {
     const stageIndex = getCurrentStageIndex(a);

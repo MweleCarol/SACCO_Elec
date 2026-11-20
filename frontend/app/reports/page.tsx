@@ -37,7 +37,7 @@ export default function ReportsPage() {
   const [tab, setTab] = useState<TabKey>("ELECTION");
 
   if (isLoading) return null;
-  if (!member || !["ELECTION_OFFICER", "ADMINISTRATOR", "AUDITOR"].includes(member.role)) {
+  if (!member || !["ELECTION_OFFICER", "ELECTION_ADMINISTRATOR", "AUDITOR"].includes(member.role)) {
     return (
       <div className="p-8">
         <p className="text-[var(--sevs-text-muted)]">You don&apos;t have access to this page.</p>

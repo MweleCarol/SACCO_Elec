@@ -40,7 +40,7 @@ const STATUS_TONE: Record<string, BadgeTone> = {
   SUCCESS: "green",
   MEMBER: "blue",
   ELECTION_OFFICER: "blue",
-  ADMINISTRATOR: "blue",
+  ELECTION_ADMINISTRATOR: "blue",
   AUDITOR: "blue",
   SYSTEM: "gray",
 

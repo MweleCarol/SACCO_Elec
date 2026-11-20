@@ -12,7 +12,7 @@ const ROLE_OPTIONS: { value: UserRole | ""; label: string }[] = [
   { value: "", label: "All Roles" },
   { value: "MEMBER", label: "Member" },
   { value: "ELECTION_OFFICER", label: "Election Officer" },
-  { value: "ADMINISTRATOR", label: "Administrator" },
+  { value: "ELECTION_ADMINISTRATOR", label: "Administrator" },
   { value: "AUDITOR", label: "Auditor" },
 ];
 

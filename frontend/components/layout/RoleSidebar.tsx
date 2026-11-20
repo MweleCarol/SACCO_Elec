@@ -77,7 +77,7 @@ export const NAV_CONFIG: Record<
       { href: "/ai-governance", label: "AI Insights", icon: Sparkles },
     ],
   },
-  ADMINISTRATOR: {
+  ELECTION_ADMINISTRATOR: {
     portalLabel: "Admin Portal",
     items: [
       { href: "/dashboard", label: "Dashboard", icon: Home, primary: true },

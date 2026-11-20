@@ -10,7 +10,7 @@ import { AuditorDashboard } from "@/components/admin/AuditorDashboard";
 const SUBTITLES: Record<string, (firstName: string) => string> = {
   MEMBER: (firstName) => `Welcome back, ${firstName}`,
   ELECTION_OFFICER: () => "Manage elections, candidates and approvals",
-  ADMINISTRATOR: () => "System administration and election oversight",
+  ELECTION_ADMINISTRATOR: () => "System administration and election oversight",
   AUDITOR: () => "Election oversight, audit activity and governance monitoring",
 };
 
@@ -42,7 +42,7 @@ export default function DashboardPage() {
       <Topbar title="Dashboard" subtitle={subtitle} />
       {member.role === "MEMBER" && <VoterDashboard user={member} />}
       {member.role === "ELECTION_OFFICER" && <ElectionOfficerDashboard user={member} />}
-      {member.role === "ADMINISTRATOR" && <ElectionAdministratorDashboard user={member} />}
+      {member.role === "ELECTION_ADMINISTRATOR" && <ElectionAdministratorDashboard user={member} />}
       {member.role === "AUDITOR" && <AuditorDashboard user={member} />}
     </>
   );

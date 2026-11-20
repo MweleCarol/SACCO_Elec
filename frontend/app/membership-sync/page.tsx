@@ -13,7 +13,7 @@ export default function MembershipSyncPage() {
   const [syncing, setSyncing] = useState(false);
 
   if (isLoading) return null;
-  if (!member || member.role !== "ADMINISTRATOR") {
+  if (!member || member.role !== "ELECTION_ADMINISTRATOR") {
     return (
       <div className="p-8">
         <p className="text-[var(--sevs-text-muted)]">You don&apos;t have access to this page.</p>

@@ -1,5 +1,5 @@
 
-export type UserRole = "MEMBER" | "ELECTION_OFFICER" | "ADMINISTRATOR" | "AUDITOR";
+export type UserRole = "MEMBER" | "ELECTION_OFFICER" | "ELECTION_ADMINISTRATOR" | "AUDITOR";
 export type MemberStatus = "ACTIVE" | "SUSPENDED";
 
 export interface Member {

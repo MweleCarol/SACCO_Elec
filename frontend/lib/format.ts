@@ -5,7 +5,7 @@ export function formatRoleLabel(role: UserRole): string {
   switch (role) {
     case "ELECTION_OFFICER":
       return "Election Officer";
-    case "ADMINISTRATOR":
+    case "ELECTION_ADMINISTRATOR":
       return "Administrator";
     case "AUDITOR":
       return "Auditor";

@@ -48,7 +48,7 @@ const ROLES: (AuditActorRole | "ALL")[] = [
   "ALL",
   "MEMBER",
   "ELECTION_OFFICER",
-  "ADMINISTRATOR",
+  "ELECTION_ADMINISTRATOR",
   "AUDITOR",
   "SYSTEM",
 ];
@@ -73,7 +73,7 @@ export default function AuditLogsPage() {
   if (isLoading) return null;
   if (
     !member ||
-    !["ELECTION_OFFICER", "ADMINISTRATOR", "AUDITOR"].includes(member.role)
+    !["ELECTION_OFFICER", "ELECTION_ADMINISTRATOR", "AUDITOR"].includes(member.role)
   ) {
     return (
       <div className="p-8">

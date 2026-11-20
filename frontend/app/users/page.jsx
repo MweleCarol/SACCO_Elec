@@ -8,7 +8,7 @@ export default function UsersPage() {
   const { member, isLoading } = useCurrentMember();
   if (isLoading) return null;
 
-  if (!member || (member.role !== "ADMINISTRATOR" && member.role !== "ELECTION_OFFICER")) {
+  if (!member || (member.role !== "ELECTION_ADMINISTRATOR" && member.role !== "ELECTION_OFFICER")) {
     return (
       <div className="p-8">
         <p className="text-[var(--sevs-text-muted)]">You don&apos;t have access to this page.</p>

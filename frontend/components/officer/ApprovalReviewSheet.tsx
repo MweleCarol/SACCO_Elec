@@ -9,7 +9,7 @@ import { DatBadge } from "@/components/officer/DatBadge";
 
 interface ApprovalReviewSheetProps {
   approval: Approval;
-  actingRole: "ELECTION_OFFICER" | "ADMINISTRATOR";
+  actingRole: "ELECTION_OFFICER" | "ELECTION_ADMINISTRATOR";
   actingName: string;
   onClose: () => void;
   onDecided: () => void;

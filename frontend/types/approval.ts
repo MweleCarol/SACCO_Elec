@@ -3,7 +3,7 @@ export type ApprovalStatus = "PENDING" | "APPROVED" | "REJECTED";
 export type ApprovalStageStatus = "PENDING" | "APPROVED" | "REJECTED";
 
 export interface ApprovalStage {
-  role: "ELECTION_OFFICER" | "ADMINISTRATOR";
+  role: "ELECTION_OFFICER" | "ELECTION_ADMINISTRATOR";
   approverName?: string;
   status: ApprovalStageStatus;
   decidedAt?: string;

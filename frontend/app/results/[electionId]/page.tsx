@@ -51,7 +51,7 @@ export default function ElectionResultsDetailPage() {
   const requiredCount = publicationApproval?.stages.length ?? 2;
 
   const isOfficer = member.role === "ELECTION_OFFICER";
-  const isAdmin = member.role === "ADMINISTRATOR";
+  const isAdmin = member.role === "ELECTION_ADMINISTRATOR";
   const isAuditor = member.role === "AUDITOR";
   const isMember = member.role === "MEMBER";
 
