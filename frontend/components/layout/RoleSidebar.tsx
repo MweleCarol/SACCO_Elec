@@ -131,7 +131,7 @@ export function RoleSidebar({ role }: RoleSidebarProps) {
     router.push("/login");
   }
   return (
-    <aside className="hidden h-full w-64 shrink-0 flex-col bg-[var(--sevs-navy)] text-white md:flex">
+    <aside className="hidden h-full w-64 shrink-0 flex-col overflow-y-auto bg-[var(--sevs-navy)] text-white md:flex">
       <div className="flex items-center gap-2 px-6 py-6">
         <ShieldCheck className="h-6 w-6" />
         <div>

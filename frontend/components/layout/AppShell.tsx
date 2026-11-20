@@ -40,9 +40,13 @@ export function AppShell({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="flex h-screen bg-[var(--sevs-bg)]">
+    // The page scrolls inside the right-hand column, never the whole window.
+    // "relative" makes that column the anchor for absolutely positioned
+    // children (e.g. the screen-reader-only "sr-only" labels); without it they
+    // anchor to <body>, escape the scroll box and add empty space below the app.
+    <div className="flex h-dvh overflow-hidden bg-[var(--sevs-bg)]">
       <RoleSidebar role={user.role} />
-      <div className="flex-1 overflow-y-auto">{children}</div>
+      <div className="relative min-w-0 flex-1 overflow-y-auto">{children}</div>
     </div>
   );
 }
