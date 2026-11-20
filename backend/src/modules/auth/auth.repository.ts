@@ -113,3 +113,9 @@ export function revokeAllUserTokens(userId: string): Promise<{ count: number }> 
     data: { revoked: true, revokedAt: new Date() },
   });
 }
+
+// Updates only the stored TOTP secret. enrollMfa also resets the replay
+// counter, so it must not be used to re-encrypt an existing secret.
+export function updateTotpSecret(userId: string, totpSecret: string): Promise<User> {
+  return prisma.user.update({ where: { id: userId }, data: { totpSecret } });
+}

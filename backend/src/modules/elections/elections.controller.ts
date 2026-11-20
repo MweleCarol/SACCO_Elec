@@ -23,13 +23,13 @@ export async function update(req: Request, res: Response): Promise<void> {
 }
 
 export async function getById(req: Request, res: Response): Promise<void> {
-  const election = await electionsService.getElection(idParam(res));
+  const election = await electionsService.getElection(req.user!.role, idParam(res));
   sendSuccess(res, election, "Election retrieved.");
 }
 
 export async function list(req: Request, res: Response): Promise<void> {
   const query = res.locals.validated?.query as ListElectionsQuery;
-  const result = await electionsService.listElections(query);
+  const result = await electionsService.listElections(req.user!.role, query);
   sendSuccess(res, result, "Elections retrieved.");
 }
 
@@ -58,11 +58,11 @@ export async function close(req: Request, res: Response): Promise<void> {
 export async function cancel(req: Request, res: Response): Promise<void> {
   const body = res.locals.validated?.body as CancelElectionInput;
   const election = await electionsService.cancelElection(req.user!.id, idParam(res), body.reason);
-  sendSuccess(res, election, "Election cancelled.");
+  sendSuccess(res, election, "Cancellation requested — awaiting officer approval.");
 }
 
 export async function reschedule(req: Request, res: Response): Promise<void> {
   const body = res.locals.validated?.body as RescheduleElectionInput;
   const election = await electionsService.rescheduleElection(req.user!.id, idParam(res), body);
-  sendSuccess(res, election, "Election rescheduled.");
+  sendSuccess(res, election, "Reschedule requested — awaiting officer approval.");
 }

@@ -3,6 +3,7 @@ import { writeAuditLog } from "../audit/audit.service";
 import * as repo from "./ai-governance.repository";
 import { toAIInsightDto, AIInsightDto } from "./ai-governance.dto";
 import { ListInsightsQuery } from "./ai-governance.schema";
+import { env } from "../../config/env";
 
 const SCAN_WINDOW_MS = 24 * 60 * 60 * 1000;
 const DEDUPE_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -52,17 +53,28 @@ async function detectRapidFailedLogins(since: Date): Promise<void> {
 // Rule 2: approval decided suspiciously fast
 const FAST_APPROVAL_THRESHOLD_MS = 30 * 1000;
 
+function approvalRequestIdOf(log: { metadata: unknown }): string | undefined {
+  const id = (log.metadata as { approvalRequestId?: unknown } | null)?.approvalRequestId;
+  return typeof id === "string" ? id : undefined;
+}
+
 async function detectFastApprovals(since: Date): Promise<void> {
   const requested = await repo.getRecentAuditLogs(since, ["APPROVAL_REQUESTED"]);
   const decided = await repo.getRecentAuditLogs(since, ["APPROVAL_DECIDED"]);
 
   for (const req of requested) {
-    if (!req.resourceId) continue;
-    const decision = decided.find((d) => d.resourceId === req.resourceId);
+    const requestId = approvalRequestIdOf(req);
+    if (!req.resourceId || !requestId) continue;
+
+    // Match decisions on THIS approval request, not just the same election:
+    // an election can have several requests (activation, then publication),
+    // and pairing with an earlier request's decision gave a negative gap that
+    // was always reported as "fast".
+    const decision = decided.find((d) => approvalRequestIdOf(d) === requestId);
     if (!decision) continue;
 
     const deltaMs = decision.createdAt.getTime() - req.createdAt.getTime();
-    if (deltaMs > FAST_APPROVAL_THRESHOLD_MS) continue;
+    if (deltaMs < 0 || deltaMs > FAST_APPROVAL_THRESHOLD_MS) continue;
 
     const existing = await repo.findExistingInsight(
       "FAST_APPROVAL", req.resourceId, new Date(Date.now() - DEDUPE_WINDOW_MS)
@@ -73,7 +85,7 @@ async function detectFastApprovals(since: Date): Promise<void> {
       eventType: "FAST_APPROVAL",
       resourceType: req.resourceType ?? undefined,
       resourceId: req.resourceId,
-      features: { deltaMs },
+      features: { deltaMs, approvalRequestId: requestId },
       riskLevel: "MEDIUM",
       recommendation: "Confirm the reviewing officer had adequate time to evaluate this request.",
       reasoning: `A decision was recorded ${Math.round(deltaMs / 1000)} seconds after the request was made.`,
@@ -83,29 +95,39 @@ async function detectFastApprovals(since: Date): Promise<void> {
   }
 }
 
-// Rule 3: sensitive actions outside normal hours (06:00-22:00 UTC)
+// Rule 3: sensitive actions outside normal working hours (06:00-22:00) in the
+// SACCO's own time zone (GOVERNANCE_TIMEZONE, default Africa/Nairobi). Using
+// UTC hours meant 06:00-22:00 UTC, which is 09:00-01:00 in Nairobi.
 const SENSITIVE_ACTIONS = ["ELECTION_ACTIVATED", "ELECTION_CANCELLED", "RESULTS_PUBLISHED", "MEMBERSHIP_SYNC_COMPLETED"];
+const WORKING_HOURS = { start: 6, end: 22 };
+
+function localHour(date: Date, timeZone: string): number {
+  const hour = new Intl.DateTimeFormat("en-GB", { hour: "numeric", hourCycle: "h23", timeZone }).format(date);
+  return Number(hour);
+}
 
 async function detectOffHoursActivity(since: Date): Promise<void> {
   const logs = await repo.getRecentAuditLogs(since, SENSITIVE_ACTIONS);
+  const timeZone = env.GOVERNANCE_TIMEZONE;
 
   for (const log of logs) {
-    const hour = log.createdAt.getUTCHours();
-    if (hour >= 6 && hour < 22) continue;
+    const hour = localHour(log.createdAt, timeZone);
+    if (hour >= WORKING_HOURS.start && hour < WORKING_HOURS.end) continue;
 
     const existing = await repo.findExistingInsight(
       "OFF_HOURS_ACTIVITY", log.id, new Date(Date.now() - DEDUPE_WINDOW_MS)
     );
     if (existing) continue;
 
+    const hh = String(hour).padStart(2, "0");
     await repo.createInsight({
       eventType: "OFF_HOURS_ACTIVITY",
       resourceType: log.resourceType ?? undefined,
       resourceId: log.id,
-      features: { hourUTC: hour, action: log.action },
+      features: { localHour: hour, timeZone, action: log.action },
       riskLevel: "LOW",
       recommendation: "Verify this action was performed by an authorized user during expected working hours.",
-      reasoning: `"${log.action}" was performed at ${hour}:00 UTC, outside the typical 06:00-22:00 operating window.`,
+      reasoning: `"${log.action}" was performed at ${hh}:00 (${timeZone}), outside the usual 06:00-22:00 working window.`,
       evidence: { auditLogId: log.id },
       confidence: 0.5,
     });

@@ -1,32 +1,33 @@
 import rateLimit from "express-rate-limit";
+import { env } from "../../config/env";
 import { sendError } from "../responses/ApiResponse";
 
-// General ceiling for the whole API — generous, mainly a backstop against
-// runaway clients/scripts rather than a security control on its own.
+// General ceiling for the whole API: a backstop against runaway clients.
 export const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 300,
   standardHeaders: true,
   legacyHeaders: false,
-  handler: (req, res) => {
+  handler: (_req, res) => {
     sendError(res, "Too many requests. Please try again later.", 429);
   },
 });
 
-// Much stricter — for login, MFA verification, and refresh (Phase 2).
-// This is the actual security control: it makes credential-stuffing and
-// TOTP brute-force against a single account impractical, per task spec
-// §25 ("rate limiting for sensitive endpoints").
+// Much stricter, for login, MFA verification, refresh and registration.
+// Counted per process and per IP, in memory (a restart clears it).
+//
+// Only FAILED requests (status 400 and above) count. Counting successes meant a
+// handful of normal logins from one IP, such as a SACCO office behind one
+// router or a tester in Postman, locked that whole IP out for 15 minutes.
+// Brute force is still capped: every wrong password or MFA code counts. The
+// per-account lockout in auth.service.ts is a separate, database-backed guard.
 export const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 10,
+  limit: env.AUTH_RATE_LIMIT_MAX,
+  skipSuccessfulRequests: true,
   standardHeaders: true,
   legacyHeaders: false,
-  // Keyed by IP + email/body identifier would be more precise, but
-  // req.body isn't guaranteed parsed at this point depending on
-  // middleware order — IP-only is the safe default; revisit if shared-IP
-  // false positives (e.g. office NAT) become a real problem.
-  handler: (req, res) => {
+  handler: (_req, res) => {
     sendError(res, "Too many attempts. Please wait before trying again.", 429);
   },
 });

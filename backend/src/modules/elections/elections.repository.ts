@@ -7,6 +7,8 @@ export function findElectionById(id: string): Promise<Election | null> {
 
 export interface ListElectionsFilters {
   status?: ElectionStatus;
+  // Extra condition ANDed with `status`; used to limit what members can list.
+  visibilityWhere?: Prisma.ElectionWhereInput;
   page: number;
   pageSize: number;
 }
@@ -14,7 +16,12 @@ export interface ListElectionsFilters {
 export async function listElections(
   filters: ListElectionsFilters
 ): Promise<{ elections: Election[]; totalCount: number }> {
-  const where: Prisma.ElectionWhereInput = filters.status ? { status: filters.status } : {};
+  const where: Prisma.ElectionWhereInput = {
+    AND: [
+      filters.status ? { status: filters.status } : {},
+      filters.visibilityWhere ?? {},
+    ],
+  };
 
   const [elections, totalCount] = await prisma.$transaction([
     prisma.election.findMany({
@@ -56,7 +63,7 @@ export function setElectionStatus(
   id: string,
   status: ElectionStatus,
   updatedById: string,
-  timestampField?: "activatedAt" | "closedAt" | "resultsPublishedAt" | "archivedAt"
+  timestampField?: "approvedAt" | "activatedAt" | "closedAt" | "resultsPublishedAt" | "archivedAt"
 ): Promise<Election> {
   return prisma.election.update({
     where: { id },
@@ -66,4 +73,23 @@ export function setElectionStatus(
       ...(timestampField ? { [timestampField]: new Date() } : {}),
     },
   });
+}
+
+// ACTIVE elections whose voting window has ended. Used by the scheduler.
+export function findEndedActiveElections(now: Date): Promise<Election[]> {
+  return prisma.election.findMany({
+    where: { status: "ACTIVE", endDate: { lte: now } },
+    orderBy: { endDate: "asc" },
+  });
+}
+
+// Closes the election only if it is still ACTIVE and past its end date.
+// Same claim pattern as DAT resolution: if an officer closed it a moment
+// earlier, count is 0 and the scheduler does nothing.
+export async function closeIfEnded(id: string, now: Date): Promise<boolean> {
+  const result = await prisma.election.updateMany({
+    where: { id, status: "ACTIVE", endDate: { lte: now } },
+    data: { status: "CLOSED", closedAt: now, updatedById: null },
+  });
+  return result.count > 0;
 }

@@ -1,10 +1,11 @@
-import { Position } from "@prisma/client";
+import { Position, UserRole } from "@prisma/client";
 import { NotFoundError } from "../../shared/errors/NotFoundError";
 import { ForbiddenError } from "../../shared/errors/ForbiddenError";
 import { ConflictError } from "../../shared/errors/ConflictError";
 import { writeAuditLog } from "../audit/audit.service";
 import * as positionsRepository from "./positions.repository";
 import { findElectionById } from "../elections/elections.repository";
+import { assertElectionVisible } from "../../shared/constants/visibility";
 import { CreatePositionInput, UpdatePositionInput } from "./positions.schema";
 
 // Positions define the ballot structure — allowing edits after an
@@ -20,7 +21,9 @@ async function assertElectionIsDraft(electionId: string): Promise<void> {
   }
 }
 
-export async function listPositions(electionId: string): Promise<Position[]> {
+// 404 when the election does not exist or is hidden from this role.
+export async function listPositions(role: UserRole, electionId: string): Promise<Position[]> {
+  assertElectionVisible(role, await findElectionById(electionId));
   return positionsRepository.listPositionsByElection(electionId);
 }
 

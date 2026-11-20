@@ -11,6 +11,7 @@ export interface ElectionDto {
   createdById: string;
   createdAt: Date;
   updatedAt: Date;
+  approvedAt: Date | null;
   activatedAt: Date | null;
   closedAt: Date | null;
   resultsPublishedAt: Date | null;
@@ -33,6 +34,7 @@ export function toElectionDto(election: Election): ElectionDto {
     createdById: election.createdById,
     createdAt: election.createdAt,
     updatedAt: election.updatedAt,
+    approvedAt: election.approvedAt,
     activatedAt: election.activatedAt,
     closedAt: election.closedAt,
     resultsPublishedAt: election.resultsPublishedAt,

@@ -29,3 +29,13 @@ export function toCandidateDto(candidate: Candidate): CandidateDto {
     updatedAt: candidate.updatedAt,
   };
 }
+
+// What members receive: no memberId. That is an internal user id linking the
+// candidate to a member account, which other members have no use for.
+export type PublicCandidateDto = Omit<CandidateDto, "memberId">;
+
+export function toPublicCandidateDto(candidate: Candidate): PublicCandidateDto {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { memberId, ...rest } = toCandidateDto(candidate);
+  return rest;
+}

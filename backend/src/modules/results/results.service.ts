@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { ConflictError } from "../../shared/errors/ConflictError";
 import { ForbiddenError } from "../../shared/errors/ForbiddenError";
+import { NotFoundError } from "../../shared/errors/NotFoundError";
 import { findElectionById } from "../elections/elections.repository";
 import { writeAuditLog, writeAuditLogInTransaction } from "../audit/audit.service";
 import { requestApproval } from "../approvals/approvals.service";
@@ -10,7 +11,7 @@ import { ResultDto } from "./results.dto";
 
 async function getElectionOrThrow(electionId: string) {
   const election = await findElectionById(electionId);
-  if (!election) throw new ConflictError("Election not found.");
+  if (!election) throw new NotFoundError("Election");
   return election;
 }
 
@@ -117,7 +118,9 @@ export async function getResults(
   const election = await getElectionOrThrow(electionId);
 
   const privilegedRoles = ["ELECTION_OFFICER", "ELECTION_ADMINISTRATOR", "AUDITOR"];
-  if (election.status !== "RESULTS_PUBLISHED" && !privilegedRoles.includes(requesterRole)) {
+  // resultsPublishedAt, not the current status: once published, results stay
+  // readable for members after the election is archived.
+  if (election.resultsPublishedAt === null && !privilegedRoles.includes(requesterRole)) {
     throw new ForbiddenError("Results have not been published yet.");
   }
 

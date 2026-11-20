@@ -1,6 +1,8 @@
 import crypto from "crypto";
 import bcrypt from "bcrypt";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../config/prisma";
+import { logger } from "../../config/logger";
 import { writeAuditLog } from "../audit/audit.service";
 import { MemberRecord } from "./membership-sync.schema";
 
@@ -71,7 +73,23 @@ async function syncOneRecord(
     });
     return { outcome: "created" };
   } catch (err) {
-    return { outcome: "failed", reason: err instanceof Error ? err.message : "Unknown error" };
+    // The client gets a short, safe reason. Raw Prisma messages include query
+    // snippets and schema names, so they go to the server log only.
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      const target = err.meta?.target;
+      const fields = Array.isArray(target) ? target.join(", ") : typeof target === "string" ? target : "";
+      return {
+        outcome: "failed",
+        reason: fields
+          ? `Another account already uses this ${fields}.`
+          : "Another account already uses this email, membership number or national ID.",
+      };
+    }
+    logger.error("Membership sync record failed", {
+      membershipNumber: record.membershipNumber,
+      message: err instanceof Error ? err.message : String(err),
+    });
+    return { outcome: "failed", reason: "This record could not be saved." };
   }
 }
 

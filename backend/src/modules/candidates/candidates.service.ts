@@ -1,11 +1,12 @@
-import { Candidate } from "@prisma/client";
+import { Candidate, UserRole } from "@prisma/client";
 import { NotFoundError } from "../../shared/errors/NotFoundError";
 import { ForbiddenError } from "../../shared/errors/ForbiddenError";
 import { ConflictError } from "../../shared/errors/ConflictError";
 import { writeAuditLog } from "../audit/audit.service";
 import * as candidatesRepository from "./candidates.repository";
 import { findElectionById } from "../elections/elections.repository";
-import { toCandidateDto, CandidateDto } from "./candidates.dto";
+import { assertElectionVisible, seesEverything } from "../../shared/constants/visibility";
+import { toCandidateDto, toPublicCandidateDto, CandidateDto, PublicCandidateDto } from "./candidates.dto";
 import { CreateCandidateInput, UpdateCandidateInput, CandidateDecisionInput, ListCandidatesQuery } from "./candidates.schema";
 
 // Candidate lists/edits are locked once an election goes ACTIVE — changing
@@ -29,11 +30,20 @@ async function assertElectionAcceptsCandidateChanges(electionId: string): Promis
   }
 }
 
+// Members see APPROVED candidates only, whatever status filter they send:
+// pending, rejected and withdrawn nominations stay internal to officers.
 export async function listCandidates(
-  electionId: string, query: ListCandidatesQuery
-): Promise<CandidateDto[]> {
-  const candidates = await candidatesRepository.listCandidatesByElection(electionId, query);
-  return candidates.map(toCandidateDto);
+  role: UserRole, electionId: string, query: ListCandidatesQuery
+): Promise<CandidateDto[] | PublicCandidateDto[]> {
+  assertElectionVisible(role, await findElectionById(electionId));
+
+  if (!seesEverything(role) && query.status && query.status !== "APPROVED") {
+    return [];
+  }
+  const filters = seesEverything(role) ? query : { ...query, status: "APPROVED" as const };
+
+  const candidates = await candidatesRepository.listCandidatesByElection(electionId, filters);
+  return seesEverything(role) ? candidates.map(toCandidateDto) : candidates.map(toPublicCandidateDto);
 }
 
 export async function registerCandidate(

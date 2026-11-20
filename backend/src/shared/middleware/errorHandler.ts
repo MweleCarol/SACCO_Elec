@@ -49,6 +49,18 @@ export function errorHandler(
     return;
   }
 
+  // Errors raised by express.json() before any route runs: malformed JSON and
+  // bodies over the 1 MB limit. These are client mistakes, not server bugs.
+  const bodyParserType = (err as { type?: unknown } | null)?.type;
+  if (bodyParserType === "entity.parse.failed") {
+    sendError(res, "Request body is not valid JSON.", 400);
+    return;
+  }
+  if (bodyParserType === "entity.too.large") {
+    sendError(res, "Request body is too large.", 413);
+    return;
+  }
+
   if (err instanceof Prisma.PrismaClientKnownRequestError) {
     const { statusCode, message } = handlePrismaError(err);
     if (statusCode >= 500) {

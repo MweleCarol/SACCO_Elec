@@ -1,23 +1,12 @@
-import { PrismaClient } from "@prisma/client";
-import { env } from "../src/config/env";
+import { prisma } from "../src/config/prisma";
 
-if (!env.DATABASE_TEST_URL) {
-  throw new Error(
-    "DATABASE_TEST_URL is not set in .env — required to run tests. See .env.example."
-  );
+// tests/env.ts has already pointed DATABASE_URL at DATABASE_TEST_URL, so the
+// app's own Prisma singleton is the test-database client.
+if (process.env.DATABASE_URL !== process.env.DATABASE_TEST_URL) {
+  throw new Error("Refusing to run: the app is not pointed at DATABASE_TEST_URL.");
 }
 
-// A separate client from the app's singleton in src/config/prisma.ts,
-// pointed explicitly at the test database. This is what actually
-// guarantees a test run can never touch your dev data, even if some
-// future test file forgets and imports the wrong prisma client.
-export const testPrisma = new PrismaClient({
-  datasources: { db: { url: env.DATABASE_TEST_URL } },
-});
-
-// One TRUNCATE with CASCADE handles foreign-key ordering automatically —
-// no need to list tables child-before-parent. Update this list if a
-// future migration adds a table.
+// Update this list if a future migration adds a table.
 const ALL_TABLES = [
   "AIInsight", "Notification", "AuditLog", "Result", "ApprovalDecision",
   "ApprovalRequest", "Vote", "Participation", "Candidate", "Position",
@@ -26,7 +15,7 @@ const ALL_TABLES = [
 
 export async function resetTestDatabase(): Promise<void> {
   const tableList = ALL_TABLES.map((t) => `"${t}"`).join(", ");
-  await testPrisma.$executeRawUnsafe(`TRUNCATE TABLE ${tableList} RESTART IDENTITY CASCADE;`);
+  await prisma.$executeRawUnsafe(`TRUNCATE TABLE ${tableList} RESTART IDENTITY CASCADE;`);
 }
 
 beforeEach(async () => {
@@ -34,5 +23,5 @@ beforeEach(async () => {
 });
 
 afterAll(async () => {
-  await testPrisma.$disconnect();
+  await prisma.$disconnect();
 });

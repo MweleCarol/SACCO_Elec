@@ -39,6 +39,15 @@ export async function requestApproval(params: {
   requiredApprovals: number;
   payload?: Record<string, unknown>;
 }): Promise<ApprovalRequestDto> {
+  const expiredIds = await approvalsRepository.expireStaleRequests(params.electionId, params.actionType);
+  for (const id of expiredIds) {
+    await writeAuditLog({
+      actorId: null, action: "APPROVAL_EXPIRED", resourceType: "Election",
+      resourceId: params.electionId, electionId: params.electionId, outcome: "SUCCESS",
+      metadata: { approvalRequestId: id, actionType: params.actionType },
+    });
+  }
+
   const existing = await approvalsRepository.findPendingRequest(params.electionId, params.actionType);
   if (existing) {
     const tally = await approvalsRepository.getTally(existing.id);
@@ -94,8 +103,17 @@ export async function decide(
   if (request.status !== "PENDING") {
     throw new ConflictError(`This request has already been resolved (${request.status}).`);
   }
-  if (request.expiresAt < new Date()) {
-    throw new ConflictError("This approval request has expired.");
+  if (request.expiresAt <= new Date()) {
+    // Record the expiry so the request stops showing as PENDING. The action
+    // can be requested again, which creates a fresh request.
+    if (await approvalsRepository.markExpired(request.id)) {
+      await writeAuditLog({
+        actorId: null, action: "APPROVAL_EXPIRED", resourceType: "Election",
+        resourceId: request.resourceId, electionId: request.electionId ?? undefined, outcome: "SUCCESS",
+        metadata: { approvalRequestId: request.id, actionType: request.actionType },
+      });
+    }
+    throw new ConflictError("This approval request has expired. Request the action again to start a new approval.");
   }
   if (request.requestedById === approverId) {
     throw new ForbiddenError("You cannot decide on a request you created yourself.");
@@ -176,4 +194,18 @@ async function resolveAndDispatch(
 
   const updated = await approvalsRepository.findRequestById(request.id);
   return toApprovalRequestDto(updated!, tally);
+}
+
+// Called by the scheduler. Marks every expired PENDING request EXPIRED so
+// approval screens stop showing requests nobody can decide any more.
+export async function expireStaleApprovalRequests(now: Date = new Date()): Promise<number> {
+  const expired = await approvalsRepository.expireAllStaleRequests(now);
+  for (const request of expired) {
+    await writeAuditLog({
+      actorId: null, action: "APPROVAL_EXPIRED", resourceType: "Election",
+      resourceId: request.resourceId, electionId: request.electionId ?? undefined, outcome: "SUCCESS",
+      metadata: { approvalRequestId: request.id, actionType: request.actionType, trigger: "SCHEDULED" },
+    });
+  }
+  return expired.length;
 }

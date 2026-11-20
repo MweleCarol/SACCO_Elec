@@ -8,12 +8,43 @@ export function findRequestById(id: string): Promise<ApprovalRequest | null> {
 // Prevents creating a second PENDING request for the same election +
 // action type — e.g. two activate calls in quick succession should reuse
 // the one already awaiting decisions, not spawn a duplicate quorum race.
+// Only an UNEXPIRED request counts: an expired one can never be decided, so
+// reusing it would block that action for the election permanently.
 export function findPendingRequest(
   electionId: string, actionType: ApprovalActionType
 ): Promise<ApprovalRequest | null> {
   return prisma.approvalRequest.findFirst({
-    where: { electionId, actionType, status: "PENDING" },
+    where: { electionId, actionType, status: "PENDING", expiresAt: { gt: new Date() } },
+    orderBy: { createdAt: "desc" },
   });
+}
+
+// Nothing runs on a schedule, so expiry is applied when a request is next
+// touched. Returns the ids that changed, so the caller can audit each one.
+export async function expireStaleRequests(
+  electionId: string, actionType: ApprovalActionType
+): Promise<string[]> {
+  const now = new Date();
+  const stale = await prisma.approvalRequest.findMany({
+    where: { electionId, actionType, status: "PENDING", expiresAt: { lte: now } },
+    select: { id: true },
+  });
+  if (stale.length === 0) return [];
+  const ids = stale.map((r) => r.id);
+  await prisma.approvalRequest.updateMany({
+    where: { id: { in: ids }, status: "PENDING" },
+    data: { status: "EXPIRED", decidedAt: now },
+  });
+  return ids;
+}
+
+// Same claim pattern as claimResolution: only a still-PENDING row changes.
+export async function markExpired(requestId: string): Promise<boolean> {
+  const result = await prisma.approvalRequest.updateMany({
+    where: { id: requestId, status: "PENDING" },
+    data: { status: "EXPIRED", decidedAt: new Date() },
+  });
+  return result.count > 0;
 }
 
 export function createRequest(data: {
@@ -89,4 +120,18 @@ export function markExecuted(requestId: string, tx: Prisma.TransactionClient) {
     where: { id: requestId },
     data: { status: "EXECUTED", executedAt: new Date() },
   });
+}
+
+// Every PENDING request past its expiry, across all elections. Used by the
+// scheduler; returns what changed so each one can be audited.
+export async function expireAllStaleRequests(now: Date): Promise<ApprovalRequest[]> {
+  const stale = await prisma.approvalRequest.findMany({
+    where: { status: "PENDING", expiresAt: { lte: now } },
+  });
+  if (stale.length === 0) return [];
+  await prisma.approvalRequest.updateMany({
+    where: { id: { in: stale.map((r) => r.id) }, status: "PENDING" },
+    data: { status: "EXPIRED", decidedAt: now },
+  });
+  return stale;
 }

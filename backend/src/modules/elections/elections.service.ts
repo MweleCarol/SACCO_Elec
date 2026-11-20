@@ -1,4 +1,4 @@
-import { Election, ElectionStatus, Prisma } from "@prisma/client";
+import { Election, ElectionStatus, Prisma, UserRole } from "@prisma/client";
 import {
   assertValidTransition,
   InvalidTransitionError,
@@ -6,6 +6,11 @@ import {
 import { ForbiddenError } from "../../shared/errors/ForbiddenError";
 import { ConflictError } from "../../shared/errors/ConflictError";
 import { NotFoundError } from "../../shared/errors/NotFoundError";
+import {
+  assertElectionVisible,
+  memberVisibleElectionWhere,
+  seesEverything,
+} from "../../shared/constants/visibility";
 import {
   writeAuditLog,
   writeAuditLogInTransaction,
@@ -109,15 +114,20 @@ export async function updateElection(
   return toElectionDto(updated);
 }
 
-export async function getElection(id: string): Promise<ElectionDto> {
-  return toElectionDto(await getElectionOrThrow(id));
+export async function getElection(role: UserRole, id: string): Promise<ElectionDto> {
+  const election = await electionsRepository.findElectionById(id);
+  assertElectionVisible(role, election);
+  return toElectionDto(election);
 }
 
 export async function listElections(
+  role: UserRole,
   query: ListElectionsQuery,
 ): Promise<PaginatedElectionsDto> {
-  const { elections, totalCount } =
-    await electionsRepository.listElections(query);
+  const { elections, totalCount } = await electionsRepository.listElections({
+    ...query,
+    visibilityWhere: seesEverything(role) ? undefined : memberVisibleElectionWhere,
+  });
   return {
     elections: elections.map(toElectionDto),
     pagination: {
@@ -176,10 +186,13 @@ export async function reviewApproval(
   }
 
   const nextStatus = input.decision === "APPROVE" ? "APPROVED" : "DRAFT";
+  // approvedAt records the admin's approval. A rejection leaves it unchanged
+  // (still null for an election that was never approved).
   const updated = await electionsRepository.setElectionStatus(
     electionId,
     nextStatus,
     adminId,
+    nextStatus === "APPROVED" ? "approvedAt" : undefined,
   );
 
   await writeAuditLog({
@@ -224,9 +237,48 @@ export async function closeElection(
     resourceId: electionId,
     electionId,
     outcome: "SUCCESS",
+    metadata: { trigger: "MANUAL" },
   });
 
+  notifyVotingClosed(updated);
   return toElectionDto(updated);
+}
+
+// Fire-and-forget, after the close is saved. Same message whether an officer
+// closed the election or the scheduler did.
+function notifyVotingClosed(election: Election): void {
+  notifyAllActiveMembers({
+    type: "ELECTION_CLOSED",
+    title: "Voting has closed",
+    message: `Voting for "${election.name}" has closed. Results will be shared once they are published.`,
+    electionId: election.id,
+  }).catch(() => {});
+}
+
+// Called by the scheduler (src/jobs/scheduler.ts). Closes every ACTIVE
+// election whose end date has passed, audits it as a system action
+// (actorId null), and notifies active members. Returns the ids closed.
+export async function autoCloseEndedElections(now: Date = new Date()): Promise<string[]> {
+  const ended = await electionsRepository.findEndedActiveElections(now);
+  const closed: string[] = [];
+
+  for (const election of ended) {
+    if (!(await electionsRepository.closeIfEnded(election.id, now))) continue;
+    closed.push(election.id);
+
+    await writeAuditLog({
+      actorId: null,
+      action: "ELECTION_CLOSED",
+      resourceType: "Election",
+      resourceId: election.id,
+      electionId: election.id,
+      outcome: "SUCCESS",
+      metadata: { trigger: "SCHEDULED", endDate: election.endDate.toISOString() },
+    });
+    notifyVotingClosed(election);
+  }
+
+  return closed;
 }
 
 // --- These three REQUEST DAT approval; they do not transition the election ---

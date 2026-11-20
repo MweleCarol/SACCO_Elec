@@ -1,19 +1,26 @@
 import bcrypt from "bcrypt";
 import crypto from "crypto";
-import QRCode from "qrcode";
 import { authenticator } from "otplib";
+import QRCode from "qrcode";
 import { User } from "@prisma/client";
 import { env } from "../../config/env";
+import { AppError } from "../../shared/errors/AppError";
 import { AuthError } from "../../shared/errors/AuthError";
 import { ConflictError } from "../../shared/errors/ConflictError";
 import { ForbiddenError } from "../../shared/errors/ForbiddenError";
 import { ValidationError } from "../../shared/errors/ValidationError";
 import { parseDurationMs } from "../../shared/utils/duration";
+import { encryptPayload, decryptPayload } from "../../shared/utils/crypto";
 import { signAccessToken, signMfaChallengeToken, verifyMfaChallengeToken } from "../../shared/utils/jwt";
-import { writeAuditLog } from "../audit/audit.service";
+import { writeAuditLog, countRecentFailedAuthAttempts } from "../audit/audit.service";
 import * as authRepository from "./auth.repository";
 import { RegisterInput, LoginInput, VerifyMfaInput, ChangePasswordInput } from "./auth.schema";
 import { SafeUserDto, AuthenticatedSessionDto, MfaChallengeDto, MfaEnrollmentDto } from "./auth.dto";
+
+// Account lockout: this many failed password or MFA attempts inside the window
+// blocks the account until the window clears. Tune here.
+const LOCKOUT_THRESHOLD = 5;
+const LOCKOUT_WINDOW_MS = 15 * 60 * 1000;
 
 function toSafeUser(user: User): SafeUserDto {
   return {
@@ -29,6 +36,36 @@ function toSafeUser(user: User): SafeUserDto {
 
 function hashToken(rawToken: string): string {
   return crypto.createHash("sha256").update(rawToken).digest("hex");
+}
+
+// New TOTP secrets are stored encrypted as iv:tag:ciphertext. Secrets saved
+// before that are plain base32 with no colon: still accepted, and re-encrypted
+// the first time they are used.
+function isEncryptedSecret(stored: string): boolean {
+  return stored.includes(":");
+}
+
+function readTotpSecret(stored: string): string {
+  return isEncryptedSecret(stored) ? decryptPayload(stored) : stored;
+}
+
+async function upgradeLegacySecret(user: User): Promise<void> {
+  if (user.totpSecret && !isEncryptedSecret(user.totpSecret)) {
+    await authRepository.updateTotpSecret(user.id, encryptPayload(user.totpSecret));
+  }
+}
+
+// Blocked attempts are logged as LOGIN_BLOCKED, which the failure count ignores,
+// so an attacker who keeps trying cannot extend the lock for the real owner.
+async function assertNotLockedOut(userId: string): Promise<void> {
+  const failures = await countRecentFailedAuthAttempts(userId, new Date(Date.now() - LOCKOUT_WINDOW_MS));
+  if (failures >= LOCKOUT_THRESHOLD) {
+    await writeAuditLog({
+      actorId: userId, action: "LOGIN_BLOCKED", outcome: "DENIED",
+      metadata: { reason: "too_many_failures" },
+    });
+    throw new AppError("Too many failed attempts. Please try again later.", 429);
+  }
 }
 
 async function issueSession(
@@ -50,10 +87,8 @@ async function issueSession(
   return { session: { accessToken, user: toSafeUser(user) }, rawRefreshToken, refreshExpiresAt };
 }
 
-// One generic message for every credential-related failure branch in
-// login() — never reveals whether the email exists or whether it was
-// specifically the password that was wrong (standard defense against
-// account enumeration).
+// One generic message for every credential failure in login(): it never reveals
+// whether the email exists or which part was wrong.
 const INVALID_CREDENTIALS_MESSAGE = "Invalid email or password.";
 
 export async function login(
@@ -84,6 +119,8 @@ export async function login(
     });
     throw new ForbiddenError("This account is not active. Contact an administrator.");
   }
+
+  await assertNotLockedOut(user.id);
 
   const passwordMatches = await bcrypt.compare(input.password, user.passwordHash);
   if (!passwordMatches) {
@@ -117,12 +154,16 @@ export async function verifyMfa(
   if (!user || !user.mfaEnabled || !user.totpSecret) {
     throw new AuthError("MFA is not configured correctly for this account.");
   }
+  // The account may have been suspended between the password step and this one.
+  if (user.status !== "ACTIVE") {
+    throw new AuthError("Account is not active.");
+  }
 
-  // checkDelta reports WHICH time-step (relative to now) actually matched
-  // within otplib's tolerance window — that precision is what makes
-  // per-step replay protection possible below, rather than just knowing
-  // "this code was valid at some point recently."
-  const delta = authenticator.checkDelta(input.totpCode, user.totpSecret);
+  await assertNotLockedOut(user.id);
+
+  // checkDelta reports WHICH time-step matched, which is what makes per-step
+  // replay protection possible below.
+  const delta = authenticator.checkDelta(input.totpCode, readTotpSecret(user.totpSecret));
 
   if (delta === null) {
     await writeAuditLog({
@@ -148,6 +189,7 @@ export async function verifyMfa(
   }
 
   await authRepository.updateLastUsedTimeStep(user.id, acceptedStep);
+  await upgradeLegacySecret(user);
 
   const { session, rawRefreshToken } = await issueSession(user, ip);
   await writeAuditLog({ actorId: user.id, action: "LOGIN_SUCCESS", outcome: "SUCCESS", metadata: { mfaUsed: true } });
@@ -155,21 +197,17 @@ export async function verifyMfa(
   return { session, rawRefreshToken };
 }
 
-// Sync-bound registration (Option 1, per our earlier decision): the
-// membership number must already exist as a PENDING_ACTIVATION row from
-// membership-sync. This is the one place a client-supplied membership
-// number gets validated against a pre-synced record instead of trusted
-// outright.
+// Sync-bound registration: the membership number must already exist as a
+// PENDING_ACTIVATION row created by membership sync. A client-supplied
+// membership number is validated against that record, never trusted outright.
 export async function register(input: RegisterInput): Promise<SafeUserDto> {
   const REGISTRATION_FAILURE_MESSAGE =
     "Unable to verify your membership details. Please check your membership number and full name, or contact your SACCO administrator.";
 
   const pendingUser = await authRepository.findUserByMembershipNumber(input.membershipNumber);
 
-  // Same generic message whether the number doesn't exist, is already
-  // claimed, or the name doesn't match — distinguishing between those
-  // would let an attacker enumerate valid membership numbers one field at
-  // a time.
+  // Same generic message whether the number doesn't exist, is already claimed,
+  // or the name doesn't match, so valid numbers can't be enumerated.
   if (!pendingUser || pendingUser.status !== "PENDING_ACTIVATION") {
     await writeAuditLog({
       actorId: null,
@@ -190,9 +228,8 @@ export async function register(input: RegisterInput): Promise<SafeUserDto> {
     throw new ForbiddenError("This membership is not currently active. Contact your SACCO administrator.");
   }
 
-  // Full-name match acts as a lightweight second factor proving the
-  // registrant is the actual member the sync record describes, not just
-  // someone who guessed or obtained the membership number alone.
+  // The full-name match is a lightweight second factor proving the registrant is
+  // the member the sync record describes, not just someone holding the number.
   const nameMatches = pendingUser.fullName.trim().toLowerCase() === input.fullName.trim().toLowerCase();
   if (!nameMatches) {
     await writeAuditLog({
@@ -233,11 +270,9 @@ export async function refresh(
   }
 
   if (existing.revoked) {
-    // A revoked token being presented again means it was already rotated
-    // away once — this IS the reuse/theft signal, not merely "not found."
-    // Every session for this user gets nuked, not just this one, since a
-    // stolen token's legitimate owner has no way to know what else the
-    // attacker may have captured.
+    // A revoked token presented again was already rotated away once: this IS the
+    // reuse/theft signal. Every session for this user is revoked, since the
+    // owner cannot know what else an attacker captured.
     await authRepository.revokeAllUserTokens(existing.userId);
     await writeAuditLog({
       actorId: existing.userId,
@@ -287,15 +322,23 @@ export async function enrollMfa(userId: string): Promise<MfaEnrollmentDto> {
   const user = await authRepository.findUserById(userId);
   if (!user) throw new AuthError("User not found.");
 
+  // Without this, anyone holding a stolen access token could replace the
+  // authenticator secret on an account that already has MFA and lock the owner out.
+  if (user.mfaEnabled) {
+    await writeAuditLog({
+      actorId: userId, action: "MFA_ENROLL_REFUSED", outcome: "DENIED",
+      metadata: { reason: "already_enabled" },
+    });
+    throw new ConflictError("MFA is already enabled on this account.");
+  }
+
   const totpSecret = authenticator.generateSecret();
   const otpauthUri = authenticator.keyuri(user.email, env.TOTP_ISSUER, totpSecret);
   const qrCodeDataUrl = await QRCode.toDataURL(otpauthUri);
 
-  // Secret is stored now, but mfaEnabled stays false until confirmMfaEnrollment
-  // proves the user can actually generate a valid code with it — otherwise
-  // an interrupted enrollment could lock an account into "MFA required" with
-  // no working authenticator app.
-  await authRepository.enrollMfa(userId, totpSecret);
+  // The secret is stored encrypted and mfaEnabled stays false until
+  // confirmMfaEnrollment proves the user can produce a valid code with it.
+  await authRepository.enrollMfa(userId, encryptPayload(totpSecret));
 
   return { totpSecret, qrCodeDataUrl, issuer: env.TOTP_ISSUER };
 }
@@ -306,7 +349,7 @@ export async function confirmMfaEnrollment(userId: string, totpCode: string): Pr
     throw new ValidationError([{ message: "No MFA enrollment in progress for this account." }]);
   }
 
-  const isValid = authenticator.check(totpCode, user.totpSecret);
+  const isValid = authenticator.check(totpCode, readTotpSecret(user.totpSecret));
   if (!isValid) {
     throw new ValidationError([{ field: "totpCode", message: "Invalid authentication code." }]);
   }
@@ -327,9 +370,7 @@ export async function changePassword(userId: string, input: ChangePasswordInput)
   const newHash = await bcrypt.hash(input.newPassword, 12);
   await authRepository.updatePassword(userId, newHash);
 
-  // Forces re-login on every other device too — a changed password should
-  // invalidate sessions an attacker (or the user, on a lost device)
-  // already holds, not just block new logins with the old password.
+  // Ends every session, so a stolen session cannot outlive the password change.
   await authRepository.revokeAllUserTokens(userId);
 
   await writeAuditLog({ actorId: userId, action: "PASSWORD_CHANGED", outcome: "SUCCESS" });

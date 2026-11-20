@@ -2,6 +2,7 @@ import { createApp } from "./app";
 import { env } from "./config/env";
 import { logger } from "./config/logger";
 import { prisma, disconnectPrisma } from "./config/prisma";
+import { startScheduler } from "./jobs/scheduler";
 
 async function main(): Promise<void> {
   // Fail fast on startup if the DB is unreachable, rather than starting
@@ -15,8 +16,11 @@ async function main(): Promise<void> {
     logger.info(`SEVS backend listening on port ${env.PORT}`, { env: env.NODE_ENV });
   });
 
+  const stopScheduler = env.SCHEDULER_ENABLED ? startScheduler(env.SCHEDULER_INTERVAL_MS) : () => {};
+
   async function shutdown(signal: string): Promise<void> {
     logger.info(`${signal} received — shutting down gracefully.`);
+    stopScheduler();
     server.close(async () => {
       await disconnectPrisma();
       logger.info("Shutdown complete.");

@@ -31,14 +31,35 @@ export function listLogs(filters: ListAuditLogsFilters) {
   ]);
 }
 
-// Ascending order for chain walking: the reverse of the browsing order above.
-export function listForVerification(dateFrom?: Date, dateTo?: Date): Promise<AuditLog[]> {
+// One batch of the chain in write order (oldest first). `after` is the last row
+// of the previous batch, so memory use stays bounded however long the chain is.
+export function listVerificationBatch(params: {
+  dateFrom?: Date;
+  dateTo?: Date;
+  after?: { createdAt: Date; id: string };
+  take: number;
+}): Promise<AuditLog[]> {
+  const and: Prisma.AuditLogWhereInput[] = [];
+  if (params.dateFrom) and.push({ createdAt: { gte: params.dateFrom } });
+  if (params.dateTo) and.push({ createdAt: { lte: params.dateTo } });
+  if (params.after) {
+    and.push({
+      OR: [
+        { createdAt: { gt: params.after.createdAt } },
+        { createdAt: params.after.createdAt, id: { gt: params.after.id } },
+      ],
+    });
+  }
+
   return prisma.auditLog.findMany({
-    where: {
-      ...(dateFrom || dateTo
-        ? { createdAt: { ...(dateFrom ? { gte: dateFrom } : {}), ...(dateTo ? { lte: dateTo } : {}) } }
-        : {}),
-    },
-    orderBy: { createdAt: "asc" },
+    where: and.length ? { AND: and } : {},
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    take: params.take,
+  });
+}
+
+export function countByActorAndActions(actorId: string, actions: string[], since: Date): Promise<number> {
+  return prisma.auditLog.count({
+    where: { actorId, action: { in: actions }, createdAt: { gte: since } },
   });
 }

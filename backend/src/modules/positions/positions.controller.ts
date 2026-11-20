@@ -5,7 +5,7 @@ import { CreatePositionInput, UpdatePositionInput } from "./positions.schema";
 
 export async function list(req: Request, res: Response): Promise<void> {
   const { electionId } = res.locals.validated?.params as { electionId: string };
-  const positions = await positionsService.listPositions(electionId);
+  const positions = await positionsService.listPositions(req.user!.role, electionId);
   sendSuccess(res, positions, "Positions retrieved.");
 }
 

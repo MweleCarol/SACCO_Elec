@@ -8,7 +8,7 @@ import {
 export async function list(req: Request, res: Response): Promise<void> {
   const { electionId } = res.locals.validated?.params as { electionId: string };
   const query = res.locals.validated?.query as ListCandidatesQuery;
-  const candidates = await candidatesService.listCandidates(electionId, query ?? {});
+  const candidates = await candidatesService.listCandidates(req.user!.role, electionId, query ?? {});
   sendSuccess(res, candidates, "Candidates retrieved.");
 }
 
