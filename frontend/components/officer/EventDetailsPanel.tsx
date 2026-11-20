@@ -1,6 +1,7 @@
 "use client";
 
-import { X, Copy, Link2 } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
+import { X, Copy, Link2, Check } from "lucide-react";
 import type { AuditLogEntry } from "@/types/audit-log";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { getRelatedAuditLogs } from "@/services/mock/audit-logs";
@@ -11,7 +12,7 @@ interface EventDetailsPanelProps {
   onSelectRelated: (log: AuditLogEntry) => void;
 }
 
-function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
+function DetailRow({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="flex items-start justify-between gap-3 py-2 text-sm">
       <span className="shrink-0 text-[var(--sevs-text-muted)]">{label}</span>
@@ -22,20 +23,31 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
 
 export function EventDetailsPanel({ log, onClose, onSelectRelated }: EventDetailsPanelProps) {
   const related = getRelatedAuditLogs(log);
+  const [copied, setCopied] = useState(false);
 
- const [copied, setCopied] = useState(false);
+  // The hash is always present, so this section always has something to show.
+  const hasAdditionalInfo = Boolean(log.ballotReference || log.statusNote || log.hash);
 
-async function copyHash() {
-  try {
-    await navigator.clipboard.writeText(log.hash);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  } catch {
-    // Clipboard API can fail without permission or in non-secure contexts — fail silently, no destructive effect.
+  // Escape closes the panel (keyboard users have no backdrop to click).
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  async function copyHash() {
+    try {
+      await navigator.clipboard.writeText(log.hash);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard API can fail without permission or in non-secure contexts — fail silently, no destructive effect.
+    }
   }
-}
 
-const content = (
+  const content = (
     <>
       <div className="flex items-center justify-between border-b border-[var(--sevs-border)] px-5 py-4">
         <h3 className="text-sm font-bold text-[var(--sevs-navy)]">Event Details</h3>
@@ -109,6 +121,31 @@ const content = (
             <Link2 className="h-4 w-4" /> View Related Events ({related.length})
           </button>
         )}
+      </div>
+    </>
+  );
+
+  return (
+    <>
+      {/* Large screens: a side rail next to the table. */}
+      <aside
+        aria-label="Event details"
+        className="hidden w-96 shrink-0 self-start overflow-hidden rounded-2xl border border-[var(--sevs-border)] bg-white shadow-sm lg:sticky lg:top-4 lg:block"
+      >
+        {content}
+      </aside>
+
+      {/* Smaller screens: a bottom sheet over the list. */}
+      <div className="fixed inset-0 z-50 flex items-end lg:hidden">
+        <div className="absolute inset-0 bg-black/40" onClick={onClose} aria-hidden="true" />
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Event details"
+          className="relative max-h-[85vh] w-full overflow-y-auto rounded-t-3xl bg-white shadow-xl"
+        >
+          {content}
+        </div>
       </div>
     </>
   );

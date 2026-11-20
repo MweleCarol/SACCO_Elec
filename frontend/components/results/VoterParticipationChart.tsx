@@ -20,7 +20,7 @@ export function VoterParticipationChart({ data }: { data: VoteTimelinePoint[] })
         <YAxis tick={{ fontSize: 11, fill: "#6b7280" }} axisLine={false} tickLine={false} />
         <Tooltip
           contentStyle={{ borderRadius: 8, border: "1px solid var(--sevs-border)", fontSize: 12 }}
-          formatter={(value: number) => [`${value.toLocaleString()} votes`, "Cumulative"]}
+          formatter={(value) => [`${Number(value ?? 0).toLocaleString()} votes`, "Cumulative"]}
         />
         <Line type="monotone" dataKey="votes" stroke="#2563eb" strokeWidth={2.5} dot={{ r: 3 }} activeDot={{ r: 5 }} />
       </LineChart>
