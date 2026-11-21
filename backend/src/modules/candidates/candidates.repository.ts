@@ -47,3 +47,37 @@ export async function positionBelongsToElection(positionId: string, electionId: 
   const position = await prisma.position.findUnique({ where: { id: positionId } });
   return position !== null && position.electionId === electionId;
 }
+
+
+
+// Creates a self-nomination unless the member already has one awaiting
+// review or approved in this election. The member's row is locked first, so
+// two quick submissions cannot both pass the check. Returns null on a
+// duplicate.
+export async function createSelfNomination(data: {
+  electionId: string; positionId: string; memberId: string; displayName: string; manifesto: string;
+}): Promise<Candidate | null> {
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${data.memberId} FOR UPDATE`;
+    const existing = await tx.candidate.findFirst({
+      where: {
+        electionId: data.electionId,
+        memberId: data.memberId,
+        status: { in: ["PENDING_REVIEW", "APPROVED"] },
+      },
+    });
+    if (existing) return null;
+    return tx.candidate.create({ data: { ...data, status: "PENDING_REVIEW" } });
+  });
+}
+
+export function listCandidaciesForMember(memberId: string, electionWhere: Prisma.ElectionWhereInput) {
+  return prisma.candidate.findMany({
+    where: { memberId, election: electionWhere },
+    include: {
+      election: { select: { id: true, name: true, status: true, startDate: true, endDate: true } },
+      position: { select: { id: true, name: true } },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+}

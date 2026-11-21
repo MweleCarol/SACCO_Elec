@@ -19,3 +19,10 @@ export async function getResults(req: Request, res: Response): Promise<void> {
   const results = await resultsService.getResults(req.user!.role, electionId);
   sendSuccess(res, results, "Results retrieved.");
 }
+
+
+export async function getTurnout(req: Request, res: Response): Promise<void> {
+  const { electionId } = res.locals.validated?.params as { electionId: string };
+  const turnout = await resultsService.getTurnout(req.user!.role, electionId);
+  sendSuccess(res, turnout, "Turnout retrieved.");
+}

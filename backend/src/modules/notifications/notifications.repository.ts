@@ -1,5 +1,5 @@
 import { prisma } from "../../config/prisma";
-import { NotificationType, Prisma } from "@prisma/client";
+import { NotificationType, UserRole, Prisma } from "@prisma/client";
 
 export function createForUsers(
   userIds: string[],
@@ -41,4 +41,9 @@ export function markAllRead(userId: string) {
 
 export function findActiveMemberIds(): Promise<{ id: string }[]> {
   return prisma.user.findMany({ where: { role: "MEMBER", status: "ACTIVE" }, select: { id: true } });
+}
+
+
+export function findActiveUserIdsByRole(role: UserRole): Promise<{ id: string }[]> {
+  return prisma.user.findMany({ where: { role, status: "ACTIVE" }, select: { id: true } });
 }

@@ -9,6 +9,7 @@ export const router = Router({ mergeParams: true });
 router.use(authenticate);
 
 router.get("/results", validate({ params: electionIdParamSchema }), controller.getResults);
+router.get("/turnout", validate({ params: electionIdParamSchema }), controller.getTurnout);
 router.post(
   "/results/tally", authorize("ELECTION_OFFICER"),
   validate({ params: electionIdParamSchema }), controller.tally

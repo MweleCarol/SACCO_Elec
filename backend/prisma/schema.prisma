@@ -75,6 +75,7 @@ model Election {
   closedAt           DateTime?
   resultsPublishedAt DateTime?
   archivedAt         DateTime?
+  eligibleVoterCount Int?
   approvalRequests   ApprovalRequest[]
   candidates         Candidate[]
   createdBy          User              @relation("ElectionCreatedBy", fields: [createdById], references: [id])

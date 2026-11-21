@@ -47,3 +47,10 @@ export function publishResults(electionId: string, tx: Prisma.TransactionClient)
     where: { electionId }, data: { status: "PUBLISHED", publishedAt: new Date() },
   });
 }
+
+
+// Members who voted. Participation has one row per member per election and
+// never says how they voted.
+export function countParticipations(electionId: string): Promise<number> {
+  return prisma.participation.count({ where: { electionId } });
+}

@@ -114,7 +114,10 @@ export async function updateElection(
   return toElectionDto(updated);
 }
 
-export async function getElection(role: UserRole, id: string): Promise<ElectionDto> {
+export async function getElection(
+  role: UserRole,
+  id: string,
+): Promise<ElectionDto> {
   const election = await electionsRepository.findElectionById(id);
   assertElectionVisible(role, election);
   return toElectionDto(election);
@@ -126,7 +129,9 @@ export async function listElections(
 ): Promise<PaginatedElectionsDto> {
   const { elections, totalCount } = await electionsRepository.listElections({
     ...query,
-    visibilityWhere: seesEverything(role) ? undefined : memberVisibleElectionWhere,
+    visibilityWhere: seesEverything(role)
+      ? undefined
+      : memberVisibleElectionWhere,
   });
   return {
     elections: elections.map(toElectionDto),
@@ -223,11 +228,10 @@ export async function closeElection(
     throw err;
   }
 
-  const updated = await electionsRepository.setElectionStatus(
+  const updated = await electionsRepository.markClosed(
     electionId,
-    "CLOSED",
     officerId,
-    "closedAt",
+    await electionsRepository.countEligibleVoters(),
   );
 
   await writeAuditLog({
@@ -258,12 +262,23 @@ function notifyVotingClosed(election: Election): void {
 // Called by the scheduler (src/jobs/scheduler.ts). Closes every ACTIVE
 // election whose end date has passed, audits it as a system action
 // (actorId null), and notifies active members. Returns the ids closed.
-export async function autoCloseEndedElections(now: Date = new Date()): Promise<string[]> {
+export async function autoCloseEndedElections(
+  now: Date = new Date(),
+): Promise<string[]> {
   const ended = await electionsRepository.findEndedActiveElections(now);
   const closed: string[] = [];
+  if (ended.length === 0) return closed;
+  const eligibleVoterCount = await electionsRepository.countEligibleVoters();
 
   for (const election of ended) {
-    if (!(await electionsRepository.closeIfEnded(election.id, now))) continue;
+    if (
+      !(await electionsRepository.closeIfEnded(
+        election.id,
+        now,
+        eligibleVoterCount,
+      ))
+    )
+      continue;
     closed.push(election.id);
 
     await writeAuditLog({
@@ -273,7 +288,10 @@ export async function autoCloseEndedElections(now: Date = new Date()): Promise<s
       resourceId: election.id,
       electionId: election.id,
       outcome: "SUCCESS",
-      metadata: { trigger: "SCHEDULED", endDate: election.endDate.toISOString() },
+      metadata: {
+        trigger: "SCHEDULED",
+        endDate: election.endDate.toISOString(),
+      },
     });
     notifyVotingClosed(election);
   }

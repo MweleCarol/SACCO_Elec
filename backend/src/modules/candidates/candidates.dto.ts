@@ -39,3 +39,10 @@ export function toPublicCandidateDto(candidate: Candidate): PublicCandidateDto {
   const { memberId, ...rest } = toCandidateDto(candidate);
   return rest;
 }
+
+
+// A member's own nomination, with enough context to show it on its own page.
+export interface MyCandidacyDto extends CandidateDto {
+  election: { id: string; name: string; status: string; startDate: Date; endDate: Date };
+  position: { id: string; name: string };
+}

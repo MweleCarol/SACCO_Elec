@@ -14,7 +14,7 @@ export interface ListElectionsFilters {
 }
 
 export async function listElections(
-  filters: ListElectionsFilters
+  filters: ListElectionsFilters,
 ): Promise<{ elections: Election[]; totalCount: number }> {
   const where: Prisma.ElectionWhereInput = {
     AND: [
@@ -49,10 +49,19 @@ export function createElection(data: {
 
 export function updateElection(
   id: string,
-  data: Partial<{ name: string; description: string; startDate: Date; endDate: Date; requiredApprovals: number }>,
-  updatedById: string
+  data: Partial<{
+    name: string;
+    description: string;
+    startDate: Date;
+    endDate: Date;
+    requiredApprovals: number;
+  }>,
+  updatedById: string,
 ): Promise<Election> {
-  return prisma.election.update({ where: { id }, data: { ...data, updatedById } });
+  return prisma.election.update({
+    where: { id },
+    data: { ...data, updatedById },
+  });
 }
 
 // Every lifecycle transition goes through this one function — it's the
@@ -63,7 +72,12 @@ export function setElectionStatus(
   id: string,
   status: ElectionStatus,
   updatedById: string,
-  timestampField?: "approvedAt" | "activatedAt" | "closedAt" | "resultsPublishedAt" | "archivedAt"
+  timestampField?:
+    | "approvedAt"
+    | "activatedAt"
+    | "closedAt"
+    | "resultsPublishedAt"
+    | "archivedAt",
 ): Promise<Election> {
   return prisma.election.update({
     where: { id },
@@ -86,10 +100,35 @@ export function findEndedActiveElections(now: Date): Promise<Election[]> {
 // Closes the election only if it is still ACTIVE and past its end date.
 // Same claim pattern as DAT resolution: if an officer closed it a moment
 // earlier, count is 0 and the scheduler does nothing.
-export async function closeIfEnded(id: string, now: Date): Promise<boolean> {
+export async function closeIfEnded(
+  id: string,
+  now: Date,
+  eligibleVoterCount: number,
+): Promise<boolean> {
   const result = await prisma.election.updateMany({
     where: { id, status: "ACTIVE", endDate: { lte: now } },
-    data: { status: "CLOSED", closedAt: now, updatedById: null },
+    data: {
+      status: "CLOSED",
+      closedAt: now,
+      updatedById: null,
+      eligibleVoterCount,
+    },
   });
   return result.count > 0;
+}
+
+
+
+// Manual close by an officer: same fields as setElectionStatus(..., "closedAt")
+// plus the eligible-voter snapshot used for turnout.
+export function markClosed(id: string, officerId: string, eligibleVoterCount: number): Promise<Election> {
+  return prisma.election.update({
+    where: { id },
+    data: { status: "CLOSED", closedAt: new Date(), updatedById: officerId, eligibleVoterCount },
+  });
+}
+
+// Members who may vote: the same rule as verification.service checkEligibility.
+export function countEligibleVoters(): Promise<number> {
+  return prisma.user.count({ where: { role: "MEMBER", membershipStatus: "ACTIVE" } });
 }

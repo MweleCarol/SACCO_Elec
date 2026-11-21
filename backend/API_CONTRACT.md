@@ -137,7 +137,8 @@ DRAFT ──DAT cancellation──► ARCHIVED
 |---|---|---|
 | Elections | `APPROVED` onwards; `ARCHIVED` only if it was approved first. Others return **404**. | All |
 | Candidates | `APPROVED` only, **without `memberId`** | All, any status |
-| Turnout during voting | Not available | `GET /governance/reports/:electionId` → `participationCount` |
+| Turnout (`GET /elections/:id/turnout`) | After publication only (403 before) | Any time, live while voting is open |
+| Their own nominations | `GET /candidates/mine`, any status | — |
 | Votes per candidate | After publication only | After the tally (before publication) |
 
 ---
@@ -271,6 +272,17 @@ On both routes the `decision` field in the body decides the outcome, not the URL
 |---|---|---|---|
 | `POST /candidates/:id/withdraw` | O, or the linked member | `{ reason? }` (body optional) | `Candidate` (`WITHDRAWN`) |
 
+### Self-nomination (members)
+| Method & path | Roles | Request | `data` |
+|---|---|---|---|
+| `POST /elections/:electionId/nominations` | M | `{ positionId, manifesto }` (manifesto 50–5,000 characters) | `Candidate` (201, `PENDING_REVIEW`). `displayName` is the member's own `fullName` and `memberId` is the caller; neither can be sent. |
+| `GET /candidates/mine` | M | — | `MyCandidacy[]`: `Candidate` plus `election { id, name, status, startDate, endDate }` and `position { id, name }`, newest first |
+
+* Open while the election is `APPROVED` or `SCHEDULED`; **403** once it is `ACTIVE` or later. Draft elections are **404** (members cannot see them).
+* **403** if the member's SACCO membership is not `ACTIVE`.
+* **409** if the member already has a nomination `PENDING_REVIEW` or `APPROVED` in the same election (any position). Withdrawing it frees them to nominate again.
+* Election officers get a `CANDIDATE_STATUS_CHANGED` notification ("New nomination to review"). Officers approve or reject it with the normal candidate endpoints; the member is then notified, with the officer's comment as the reason on a rejection.
+
 ### Voting (members only)
 | Method & path | Roles | Request | `data` |
 |---|---|---|---|
@@ -297,6 +309,9 @@ Show progress as e.g. **"1 of 2 approvals"** using `approveCount` / `requiredApp
 | `POST /elections/:electionId/results/tally` | O | — | `null`. Only when `CLOSED`; can be re-run until publication. |
 | `POST /elections/:electionId/results/publish` | O | — | `ApprovalRequest` **(DAT)**. 409 if not tallied yet. |
 | `GET /elections/:electionId/results` | Any | — | `Result[]`. Members: 403 until published. |
+| `GET /elections/:electionId/turnout` | Any | — | `{ votesCast, eligibleVoters, turnoutPercent, isLive }`. Members: 403 until published. |
+
+Turnout: `eligibleVoters` is the number of members with an `ACTIVE` SACCO membership, **recorded when voting closes** so it does not change afterwards. While voting is open (`isLive: true`) it is today's count. It is `null` (and so is `turnoutPercent`) for elections closed before this was recorded. `turnoutPercent` has one decimal place.
 
 Ties go to the earliest-registered candidate. Group by `positionName` for display.
 
@@ -330,11 +345,10 @@ Ties go to the earliest-registered candidate. Group by `positionName` for displa
 
 | Frontend feature | Status / decision |
 |---|---|
-| Member self-nomination (`/my-candidacy`, `/candidates/apply`) | **Decided: keep.** Needs a new endpoint for members to apply (arrives as `PENDING_REVIEW` for officer review). |
-| Live turnout on the member dashboard | **Decided: hide from members.** Staff use `/governance/reports/:electionId`. |
+| Live turnout on the member dashboard | **Decided: hide from members.** Members see turnout with the published results. |
 | "Ballot Reference" after voting | **Decided: remove.** Conflicts with vote secrecy. |
 | "Invalid votes" and the votes-over-time chart on results | Remove. Electronic ballots are validated before saving, and vote times are deliberately hidden. |
-| Eligible voters / turnout figures inside `Election` | Not in `Election`. Use the governance report (staff), or the participation count once results are published. |
+| Candidate photo / supporting-document upload | No file storage yet. Nomination is text only (`photoUrl` can be set by an officer as a link). |
 | Forgot password | Not available. Hide the link or replace it with "Contact your SACCO office". |
 | Audit log actor name, role, IP address, device, risk level | `AuditLogEntry` has `actorId` only. Look up names via `GET /users` (administrators), or add fields to the backend later. |
 | `branch` and phone number on the profile | Not in `User` yet; needs a small backend addition. |

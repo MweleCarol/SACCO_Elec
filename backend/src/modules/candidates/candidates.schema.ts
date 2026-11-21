@@ -44,3 +44,17 @@ export const listCandidatesQuerySchema = z.object({
 });
 
 export type ListCandidatesQuery = z.infer<typeof listCandidatesQuerySchema>;
+
+
+// A member putting themselves forward. Name and account come from the
+// logged-in user, never from the request body.
+export const selfNominationSchema = z.object({
+  positionId: z.string().uuid("Choose a position."),
+  manifesto: z
+    .string()
+    .trim()
+    .min(50, "Your manifesto must be at least 50 characters.")
+    .max(5000, "Your manifesto must be 5,000 characters or fewer."),
+});
+
+export type SelfNominationInput = z.infer<typeof selfNominationSchema>;

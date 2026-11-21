@@ -2,12 +2,18 @@ import { Prisma } from "@prisma/client";
 import { ConflictError } from "../../shared/errors/ConflictError";
 import { ForbiddenError } from "../../shared/errors/ForbiddenError";
 import { NotFoundError } from "../../shared/errors/NotFoundError";
-import { findElectionById } from "../elections/elections.repository";
-import { writeAuditLog, writeAuditLogInTransaction } from "../audit/audit.service";
+import {
+  countEligibleVoters,
+  findElectionById,
+} from "../elections/elections.repository";
+import {
+  writeAuditLog,
+  writeAuditLogInTransaction,
+} from "../audit/audit.service";
 import { requestApproval } from "../approvals/approvals.service";
 import { notifyAllActiveMembers } from "../notifications/notifications.service";
 import * as resultsRepository from "./results.repository";
-import { ResultDto } from "./results.dto";
+import { ResultDto, TurnoutDto } from "./results.dto";
 
 async function getElectionOrThrow(electionId: string) {
   const election = await findElectionById(electionId);
@@ -15,13 +21,18 @@ async function getElectionOrThrow(electionId: string) {
   return election;
 }
 
-export async function tallyResults(officerId: string, electionId: string): Promise<void> {
+export async function tallyResults(
+  officerId: string,
+  electionId: string,
+): Promise<void> {
   const election = await getElectionOrThrow(electionId);
 
   // Only CLOSED: tally can be re-run to fix a mistake, but never after
   // publication has made results final.
   if (election.status !== "CLOSED") {
-    throw new ForbiddenError("Results can only be tallied once voting has closed.");
+    throw new ForbiddenError(
+      "Results can only be tallied once voting has closed.",
+    );
   }
 
   const [tally, positions] = await Promise.all([
@@ -29,9 +40,16 @@ export async function tallyResults(officerId: string, electionId: string): Promi
     resultsRepository.getApprovedCandidatesByPosition(electionId),
   ]);
 
-  const tallyMap = new Map(tally.map((t) => [`${t.positionId}:${t.candidateId}`, t.voteCount]));
+  const tallyMap = new Map(
+    tally.map((t) => [`${t.positionId}:${t.candidateId}`, t.voteCount]),
+  );
 
-  const results: { positionId: string; candidateId: string; voteCount: number; isWinner: boolean }[] = [];
+  const results: {
+    positionId: string;
+    candidateId: string;
+    voteCount: number;
+    isWinner: boolean;
+  }[] = [];
 
   for (const position of positions) {
     const withCounts = position.candidates.map((c) => ({
@@ -45,7 +63,9 @@ export async function tallyResults(officerId: string, electionId: string): Promi
 
     withCounts.forEach((c, index) => {
       results.push({
-        positionId: position.id, candidateId: c.candidateId, voteCount: c.voteCount,
+        positionId: position.id,
+        candidateId: c.candidateId,
+        voteCount: c.voteCount,
         isWinner: index < position.seats,
       });
     });
@@ -54,8 +74,13 @@ export async function tallyResults(officerId: string, electionId: string): Promi
   await resultsRepository.replaceResults(electionId, results);
 
   await writeAuditLog({
-    actorId: officerId, action: "RESULTS_TALLIED", resourceType: "Election",
-    resourceId: electionId, electionId, outcome: "SUCCESS", metadata: { resultCount: results.length },
+    actorId: officerId,
+    action: "RESULTS_TALLIED",
+    resourceType: "Election",
+    resourceId: electionId,
+    electionId,
+    outcome: "SUCCESS",
+    metadata: { resultCount: results.length },
   });
 }
 
@@ -65,12 +90,16 @@ export async function requestPublish(officerId: string, electionId: string) {
   const election = await getElectionOrThrow(electionId);
 
   if (election.status !== "CLOSED") {
-    throw new ForbiddenError("Results can only be published once voting has closed.");
+    throw new ForbiddenError(
+      "Results can only be published once voting has closed.",
+    );
   }
 
   const existingResults = await resultsRepository.listResults(electionId);
   if (existingResults.length === 0) {
-    throw new ConflictError("Results must be tallied before publication can be requested.");
+    throw new ConflictError(
+      "Results must be tallied before publication can be requested.",
+    );
   }
 
   return requestApproval({
@@ -86,48 +115,110 @@ export async function requestPublish(officerId: string, electionId: string) {
 // failed audit write rolls publication back. Returns a callback that runs only
 // after the transaction commits.
 export async function executePublish(
-  electionId: string, officerId: string, tx: Prisma.TransactionClient
+  electionId: string,
+  officerId: string,
+  tx: Prisma.TransactionClient,
 ): Promise<() => void> {
   // The approval may be old: re-check the election is still closed.
   const current = await tx.election.findUnique({ where: { id: electionId } });
   if (!current || current.status !== "CLOSED") {
-    throw new ConflictError("Results can only be published for a closed election.");
+    throw new ConflictError(
+      "Results can only be published for a closed election.",
+    );
   }
 
   await tx.election.update({
-    where: { id: electionId }, data: { status: "RESULTS_PUBLISHED", resultsPublishedAt: new Date() },
+    where: { id: electionId },
+    data: { status: "RESULTS_PUBLISHED", resultsPublishedAt: new Date() },
   });
   await resultsRepository.publishResults(electionId, tx);
 
   await writeAuditLogInTransaction(tx, {
-    actorId: officerId, action: "RESULTS_PUBLISHED", resourceType: "Election",
-    resourceId: electionId, electionId, outcome: "SUCCESS",
+    actorId: officerId,
+    action: "RESULTS_PUBLISHED",
+    resourceType: "Election",
+    resourceId: electionId,
+    electionId,
+    outcome: "SUCCESS",
   });
 
   return () => {
     notifyAllActiveMembers({
-      type: "RESULTS_PUBLISHED", title: "Election results published",
-      message: `Results for "${current.name}" have been published.`, electionId,
+      type: "RESULTS_PUBLISHED",
+      title: "Election results published",
+      message: `Results for "${current.name}" have been published.`,
+      electionId,
     }).catch(() => {});
   };
 }
 
 export async function getResults(
-  requesterRole: string, electionId: string
+  requesterRole: string,
+  electionId: string,
 ): Promise<ResultDto[]> {
   const election = await getElectionOrThrow(electionId);
 
-  const privilegedRoles = ["ELECTION_OFFICER", "ELECTION_ADMINISTRATOR", "AUDITOR"];
+  const privilegedRoles = [
+    "ELECTION_OFFICER",
+    "ELECTION_ADMINISTRATOR",
+    "AUDITOR",
+  ];
   // resultsPublishedAt, not the current status: once published, results stay
   // readable for members after the election is archived.
-  if (election.resultsPublishedAt === null && !privilegedRoles.includes(requesterRole)) {
+  if (
+    election.resultsPublishedAt === null &&
+    !privilegedRoles.includes(requesterRole)
+  ) {
     throw new ForbiddenError("Results have not been published yet.");
   }
 
   const results = await resultsRepository.listResults(electionId);
   return results.map((r) => ({
-    id: r.id, positionId: r.positionId, positionName: r.position.name,
-    candidateId: r.candidateId, candidateName: r.candidate.displayName,
-    voteCount: r.voteCount, isWinner: r.isWinner, status: r.status, publishedAt: r.publishedAt,
+    id: r.id,
+    positionId: r.positionId,
+    positionName: r.position.name,
+    candidateId: r.candidateId,
+    candidateName: r.candidate.displayName,
+    voteCount: r.voteCount,
+    isWinner: r.isWinner,
+    status: r.status,
+    publishedAt: r.publishedAt,
   }));
+}
+
+// Turnout follows the same rule as results: officers, administrators and
+// auditors may watch it live; members only see it once results are
+// published (decided: no live turnout for members).
+export async function getTurnout(
+  requesterRole: string,
+  electionId: string,
+): Promise<TurnoutDto> {
+  const election = await getElectionOrThrow(electionId);
+
+  const privilegedRoles = [
+    "ELECTION_OFFICER",
+    "ELECTION_ADMINISTRATOR",
+    "AUDITOR",
+  ];
+  if (
+    election.resultsPublishedAt === null &&
+    !privilegedRoles.includes(requesterRole)
+  ) {
+    throw new ForbiddenError(
+      "Turnout is shared with members when results are published.",
+    );
+  }
+
+  const votesCast = await resultsRepository.countParticipations(electionId);
+  const isLive = election.status === "ACTIVE";
+  // While voting is open the snapshot does not exist yet, so use today's count.
+  const eligibleVoters = isLive
+    ? await countEligibleVoters()
+    : election.eligibleVoterCount;
+  const turnoutPercent =
+    eligibleVoters && eligibleVoters > 0
+      ? Math.round((votesCast / eligibleVoters) * 1000) / 10
+      : null;
+
+  return { votesCast, eligibleVoters, turnoutPercent, isLive };
 }
