@@ -31,9 +31,15 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   if (status !== "authenticated" || !user) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[var(--sevs-bg)]" role="status" aria-live="polite">
+      <div
+        className="flex min-h-screen items-center justify-center bg-[var(--sevs-bg)]"
+        role="status"
+        aria-live="polite"
+      >
         <p className="text-sm text-[var(--sevs-text-muted)]">
-          {status === "loading" ? "Checking your session…" : "Redirecting to login…"}
+          {status === "loading"
+            ? "Checking your session…"
+            : "Redirecting to login…"}
         </p>
       </div>
     );

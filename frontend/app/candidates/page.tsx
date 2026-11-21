@@ -1,181 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle2, Clock, ListChecks, Users2, XCircle } from "lucide-react";
+import { CheckCircle2, Clock, Users2, XCircle } from "lucide-react";
 import { useCurrentMember } from "@/hooks/useCurrentMember";
 import { Topbar } from "@/components/layout/Topbar";
 import { StatCard } from "@/components/dashboard/StatCard";
-import { CandidateCard } from "@/components/voter/CandidateCard";
 import { CandidateManagementRow } from "@/components/officer/CandidateManagementRow";
 import { CandidateManagementTable } from "@/components/officer/CandidateManagementTable";
 import { OfficerCandidateDetailPanel } from "@/components/officer/OfficerCandidateDetailPanel";
-import { MemberCandidateDetailPanel } from "@/components/voter/MemberCandidateDetailPanel";
-import {
-  getMemberVisibleElections,
-  mockElections,
-} from "@/services/mock/elections";
-import {
-  getApprovedCandidatesByElection,
-  mockCandidates,
-} from "@/services/mock/candidates";
+import { MemberCandidatesView } from "@/components/voter/MemberCandidatesView";
+import { mockElections } from "@/services/mock/elections";
+import { mockCandidates } from "@/services/mock/candidates";
 import type { Candidate } from "@/types/candidate";
 
-function MemberCandidatesView() {
-  const elections = getMemberVisibleElections();
-  const [electionId, setElectionId] = useState(elections[0]?.id ?? "");
-  const [positionId, setPositionId] = useState<string>("ALL");
-  const [selected, setSelected] = useState<Candidate | null>(null);
 
-  const election = elections.find((e) => e.id === electionId) ?? elections[0];
-
-  const visibleElectionIds = new Set(elections.map((e) => e.id));
-  const visibleCandidates = mockCandidates.filter((c) =>
-    visibleElectionIds.has(c.electionId),
-  );
-  const totalPositions = new Set(visibleCandidates.map((c) => c.positionId))
-    .size;
-  const totalCandidates = visibleCandidates.length;
-  const approvedCount = visibleCandidates.filter(
-    (c) => c.status === "APPROVED",
-  ).length;
-  const rejectedCount = visibleCandidates.filter(
-    (c) => c.status === "REJECTED",
-  ).length;
-
-  const electionCandidates = election
-    ? getApprovedCandidatesByElection(election.id)
-    : [];
-  const shownCandidates =
-    positionId === "ALL"
-      ? electionCandidates
-      : electionCandidates.filter((c) => c.positionId === positionId);
-
-  return (
-    <>
-      <Topbar
-        title="Candidates"
-        subtitle="Approved candidates standing in your elections"
-      />
-      <div className="space-y-6 p-4 sm:p-8">
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <StatCard
-            label="Total Positions"
-            value={totalPositions}
-            icon={<ListChecks className="h-4 w-4" />}
-            iconTone="navy"
-          />
-          <StatCard
-            label="Total Candidates"
-            value={totalCandidates}
-            icon={<Users2 className="h-4 w-4" />}
-            iconTone="navy"
-          />
-          <StatCard
-            label="Approved"
-            value={approvedCount}
-            icon={<CheckCircle2 className="h-4 w-4" />}
-            iconTone="green"
-          />
-          <StatCard
-            label="Rejected"
-            value={rejectedCount}
-            icon={<XCircle className="h-4 w-4" />}
-            iconTone="red"
-          />
-        </div>
-
-        {elections.length === 0 && (
-          <p className="text-sm text-[var(--sevs-text-muted)]">
-            No elections are currently visible to you.
-          </p>
-        )}
-
-        {elections.length > 1 && (
-          <select
-            value={electionId}
-            onChange={(e) => {
-              setElectionId(e.target.value);
-              setPositionId("ALL");
-              setSelected(null);
-            }}
-            className="rounded-lg border border-[var(--sevs-border)] px-3 py-2.5 text-sm text-[var(--sevs-text-body)] focus:border-[var(--sevs-navy)] focus:outline-none"
-          >
-            {elections.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.title}
-              </option>
-            ))}
-          </select>
-        )}
-
-        {election && (
-          <div>
-            <h2 className="mb-3 text-lg font-bold text-[var(--sevs-navy)]">
-              {election.title}
-            </h2>
-
-            <div className="mb-4 flex gap-2 overflow-x-auto border-b border-[var(--sevs-border)] pb-px">
-              <button
-                onClick={() => setPositionId("ALL")}
-                className={`shrink-0 whitespace-nowrap border-b-2 px-1 pb-2 text-sm font-bold transition ${
-                  positionId === "ALL"
-                    ? "border-[var(--sevs-navy)] text-[var(--sevs-navy)]"
-                    : "border-transparent text-[var(--sevs-text-muted)]"
-                }`}
-              >
-                All Candidates ({electionCandidates.length})
-              </button>
-              {election.positions.map((p) => {
-                const count = electionCandidates.filter(
-                  (c) => c.positionId === p.id,
-                ).length;
-                return (
-                  <button
-                    key={p.id}
-                    onClick={() => setPositionId(p.id)}
-                    className={`shrink-0 whitespace-nowrap border-b-2 px-1 pb-2 text-sm font-bold transition ${
-                      positionId === p.id
-                        ? "border-[var(--sevs-navy)] text-[var(--sevs-navy)]"
-                        : "border-transparent text-[var(--sevs-text-muted)]"
-                    }`}
-                  >
-                    {p.title} ({count})
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="flex gap-5">
-              <div className="min-w-0 flex-1 space-y-3">
-                {shownCandidates.length === 0 ? (
-                  <p className="text-sm text-[var(--sevs-text-muted)]">
-                    No approved candidates match this filter.
-                  </p>
-                ) : (
-                  shownCandidates.map((c) => (
-                    <button
-                      key={c.id}
-                      onClick={() => setSelected(c)}
-                      className="block w-full text-left"
-                    >
-                      <CandidateCard candidate={c} />
-                    </button>
-                  ))
-                )}
-              </div>
-              {selected && (
-                <MemberCandidateDetailPanel
-                  candidate={selected}
-                  onClose={() => setSelected(null)}
-                />
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-    </>
-  );
-}
 
 function OfficerCandidatesView() {
   const [electionId, setElectionId] = useState(mockElections[0]?.id ?? "");

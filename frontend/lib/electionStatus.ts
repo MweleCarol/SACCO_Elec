@@ -56,3 +56,10 @@ export function timeUntil(iso: string, now: Date = new Date()): string {
   const days = Math.round(hours / 24);
   return `in ${days} days`;
 }
+
+
+// Members may nominate themselves while the election is announced but voting
+// has not started (same rule as the backend).
+export function nominationsOpen(e: Election): boolean {
+  return e.status === "APPROVED" || e.status === "SCHEDULED";
+}

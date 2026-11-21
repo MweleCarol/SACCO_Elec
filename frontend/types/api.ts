@@ -281,3 +281,21 @@ export interface ApprovalRequestList { requests: ApprovalRequest[]; pagination: 
 export interface AuditLogList { logs: AuditLogEntry[]; pagination: Pagination }
 export interface NotificationList { notifications: Notification[]; pagination: Pagination }
 export interface InsightList { insights: AIInsight[]; pagination: Pagination }
+
+
+
+// ---------- Member-only additions (Member portal part 2) ----------
+
+// GET /candidates/mine: the member's own nominations, any status.
+export interface MyCandidacy extends Candidate {
+  election: { id: string; name: string; status: ElectionStatus; startDate: string; endDate: string };
+  position: { id: string; name: string };
+}
+
+// GET /elections/:id/turnout. Members get it only after results are published.
+export interface Turnout {
+  votesCast: number;
+  eligibleVoters: number | null; // null for elections closed before this was recorded
+  turnoutPercent: number | null;
+  isLive: boolean; // true while voting is open
+}

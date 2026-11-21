@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Trophy, Info } from "lucide-react";
 import { useCurrentMember } from "@/hooks/useCurrentMember";
+import { MemberResultsList } from "@/components/voter/MemberResultsList";
 import { Topbar } from "@/components/layout/Topbar";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { mockResults, getElectionResultSummary } from "@/services/mock/results";
@@ -15,7 +16,11 @@ import type { CandidateResult } from "@/types/result";
 
 function WinnerAvatar({ name, photoUrl }: { name: string; photoUrl?: string }) {
   const [failed, setFailed] = useState(!photoUrl);
-  const initials = name.split(" ").map((p) => p[0]).slice(0, 2).join("");
+  const initials = name
+    .split(" ")
+    .map((p) => p[0])
+    .slice(0, 2)
+    .join("");
 
   if (failed) {
     return (
@@ -28,8 +33,17 @@ function WinnerAvatar({ name, photoUrl }: { name: string; photoUrl?: string }) {
     );
   }
   return (
-    <div className="relative h-7 w-7 shrink-0 overflow-hidden rounded-full bg-gray-100 ring-2 ring-white" title={name}>
-      <Image src={photoUrl!} alt={name} fill className="object-cover" onError={() => setFailed(true)} />
+    <div
+      className="relative h-7 w-7 shrink-0 overflow-hidden rounded-full bg-gray-100 ring-2 ring-white"
+      title={name}
+    >
+      <Image
+        src={photoUrl!}
+        alt={name}
+        fill
+        className="object-cover"
+        onError={() => setFailed(true)}
+      />
     </div>
   );
 }
@@ -46,7 +60,10 @@ function ResultsPageInner() {
       <div className="p-8">
         <p className="text-[var(--sevs-text-muted)]">
           You&apos;re not signed in.{" "}
-          <a href="/login" className="font-bold text-[var(--sevs-navy)] hover:underline">
+          <a
+            href="/login"
+            className="font-bold text-[var(--sevs-navy)] hover:underline"
+          >
             Log in
           </a>{" "}
           to view results.
@@ -56,10 +73,13 @@ function ResultsPageInner() {
   }
 
   const allResultsSorted = [...mockResults].sort(
-    (a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()
+    (a, b) =>
+      new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime(),
   );
 
-  const focusedElection = focusedElectionId ? mockElections.find((e) => e.id === focusedElectionId) : null;
+  const focusedElection = focusedElectionId
+    ? mockElections.find((e) => e.id === focusedElectionId)
+    : null;
   const focusedResultExists = focusedElectionId
     ? allResultsSorted.some((r) => r.electionId === focusedElectionId)
     : true;
@@ -70,13 +90,19 @@ function ResultsPageInner() {
 
   return (
     <>
-      <Topbar title="Results" subtitle="Published outcomes for closed elections" />
+      <Topbar
+        title="Results"
+        subtitle="Published outcomes for closed elections"
+      />
 
       <div className="space-y-4 p-4 sm:p-8">
         {focusedElectionId && focusedResultExists && (
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-blue-50 px-4 py-2.5 text-sm text-blue-800">
             <span>
-              Showing results for <span className="font-semibold">{focusedElection?.title ?? "this election"}</span>
+              Showing results for{" "}
+              <span className="font-semibold">
+                {focusedElection?.title ?? "this election"}
+              </span>
             </span>
             <Link href="/results" className="font-bold hover:underline">
               View all results
@@ -88,7 +114,9 @@ function ResultsPageInner() {
           <div className="flex items-start gap-3 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">
             <Info className="mt-0.5 h-4 w-4 shrink-0" />
             <div>
-              <p className="font-semibold">We couldn&apos;t find that result.</p>
+              <p className="font-semibold">
+                We couldn&apos;t find that result.
+              </p>
               <p className="mt-0.5">
                 It may not be published yet, or the link may be out of date.{" "}
                 <Link href="/results" className="font-bold hover:underline">
@@ -102,18 +130,22 @@ function ResultsPageInner() {
 
         {!focusedElectionId && resultsToShow.length === 0 && (
           <p className="text-sm text-[var(--sevs-text-muted)]">
-            No published results yet. Results appear here once an election closes and its outcome
-            is officially published.
+            No published results yet. Results appear here once an election
+            closes and its outcome is officially published.
           </p>
         )}
 
         {resultsToShow.map((result) => {
-          const election = mockElections.find((e) => e.id === result.electionId);
+          const election = mockElections.find(
+            (e) => e.id === result.electionId,
+          );
           const winners: CandidateResult[] = result.positions
             .map((p) => p.candidates.find((c) => c.isWinner))
             .filter((c): c is CandidateResult => !!c);
 
-          const summary = election ? getElectionResultSummary(election.id) : null;
+          const summary = election
+            ? getElectionResultSummary(election.id)
+            : null;
 
           return (
             <Link
@@ -136,11 +168,14 @@ function ResultsPageInner() {
 
                   <p className="mt-1 text-sm text-[var(--sevs-text-muted)]">
                     Published{" "}
-                    {new Date(result.publishedAt).toLocaleDateString(undefined, {
-                      month: "long",
-                      day: "numeric",
-                      year: "numeric",
-                    })}
+                    {new Date(result.publishedAt).toLocaleDateString(
+                      undefined,
+                      {
+                        month: "long",
+                        day: "numeric",
+                        year: "numeric",
+                      },
+                    )}
                     {summary && <> · {summary.turnout}% turnout</>}
                   </p>
 
@@ -148,17 +183,25 @@ function ResultsPageInner() {
                     <div className="mt-3 flex items-center gap-2">
                       <div className="flex -space-x-2">
                         {winners.map((w) => (
-                          <WinnerAvatar key={w.candidateId} name={w.candidateName} photoUrl={w.photoUrl} />
+                          <WinnerAvatar
+                            key={w.candidateId}
+                            name={w.candidateName}
+                            photoUrl={w.photoUrl}
+                          />
                         ))}
                       </div>
                       <p className="min-w-0 truncate text-sm text-[var(--sevs-text-body)]">
-                        <span className="font-semibold text-[var(--sevs-navy)]">Winners:</span>{" "}
+                        <span className="font-semibold text-[var(--sevs-navy)]">
+                          Winners:
+                        </span>{" "}
                         {winners.map((w) => w.candidateName).join(", ")}
                       </p>
                     </div>
                   )}
 
-                  <p className="mt-3 text-sm font-bold text-[var(--sevs-navy)]">View full results →</p>
+                  <p className="mt-3 text-sm font-bold text-[var(--sevs-navy)]">
+                    View full results →
+                  </p>
                 </div>
               </div>
             </Link>
@@ -170,6 +213,10 @@ function ResultsPageInner() {
 }
 
 export default function ResultsPage() {
+  const { member, isLoading } = useCurrentMember();
+  if (isLoading || !member) return null;
+  // Members: real published results. Staff: mock view until the Officer portal step.
+  if (member.role === "MEMBER") return <MemberResultsList />;
   return (
     <Suspense fallback={null}>
       <ResultsPageInner />

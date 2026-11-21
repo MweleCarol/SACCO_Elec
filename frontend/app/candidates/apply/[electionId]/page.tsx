@@ -1,180 +1,251 @@
 "use client";
 
-import { useState } from "react";
+// A member nominating themselves. The nomination goes to an election officer
+// for review; it only appears to other members once approved.
+import { useId, useState, type FormEvent } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { Upload } from "lucide-react";
-import { useCurrentMember } from "@/hooks/useCurrentMember";
+import { Info } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { useElection } from "@/hooks/useElections";
+import { useMyCandidacies, useNominateSelf, usePositions } from "@/hooks/useCandidacy";
+import { formatDateTime, nominationsOpen } from "@/lib/electionStatus";
+import { getApiErrorMessage, getApiFieldErrors } from "@/services/api/errors";
 import { Topbar } from "@/components/layout/Topbar";
 import { Button } from "@/components/ui/button";
-import { getElectionById, isAcceptingNominations } from "@/services/mock/elections";
-import { submitCandidateApplication, hasAppliedForElection } from "@/services/mock/candidates";
+import { ErrorPanel, LoadingCards } from "@/components/ui/LoadState";
+
+const MIN = 50;
+const MAX = 5000;
 
 export default function CandidateApplicationPage() {
   const { electionId } = useParams<{ electionId: string }>();
   const router = useRouter();
-  const { member, isLoading } = useCurrentMember();
+  const { user } = useAuth();
+  const isMember = user?.role === "MEMBER";
+
+  const election = useElection(electionId);
+  const positions = usePositions(electionId);
+  const mine = useMyCandidacies(isMember);
+  const nominate = useNominateSelf(electionId);
+
   const [positionId, setPositionId] = useState("");
-  const [bio, setBio] = useState("");
-  const [eligibilityConfirmed, setEligibilityConfirmed] = useState(false);
-  const [declarationConfirmed, setDeclarationConfirmed] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const [manifesto, setManifesto] = useState("");
+  const [declared, setDeclared] = useState(false);
+  const [errors, setErrors] = useState<{ positionId?: string; manifesto?: string; declared?: string }>({});
+  const ids = { position: useId(), manifesto: useId(), manifestoHint: useId(), declared: useId() };
 
-  if (isLoading) return null;
-  if (!member) {
+  if (user && !isMember) {
     return (
-      <div className="p-8">
-        <p className="text-[var(--sevs-text-muted)]">
-          You&apos;re not signed in.{" "}
-          <a href="/login" className="font-bold text-[var(--sevs-navy)] hover:underline">Log in</a> to apply.
-        </p>
-      </div>
+      <Shell title="Stand as a candidate">
+        <ErrorPanel message="Only SACCO members can nominate themselves." backHref="/candidates" backLabel="Back to candidates" />
+      </Shell>
     );
   }
 
-  const election = getElectionById(electionId);
-  if (!election) {
-    return <div className="p-8"><p className="text-[var(--sevs-text-muted)]">Election not found.</p></div>;
-  }
-
-  if (!isAcceptingNominations(election)) {
+  if (election.isLoading || positions.isLoading || mine.isLoading) {
     return (
-      <div className="p-8">
-        <p className="text-[var(--sevs-text-muted)]">This election is not currently accepting candidate applications.</p>
-      </div>
+      <Shell title="Stand as a candidate">
+        <LoadingCards count={2} label="Loading the nomination form…" />
+      </Shell>
     );
   }
 
-  if (hasAppliedForElection(member.id, election.id)) {
+  if (election.isError || !election.data) {
     return (
-      <div className="p-8">
-        <p className="text-[var(--sevs-text-muted)]">
-          You&apos;ve already applied for this election.{" "}
-          <a href="/my-candidacy" className="font-bold text-[var(--sevs-navy)] hover:underline">View your application</a>.
-        </p>
-      </div>
+      <Shell title="Stand as a candidate">
+        <ErrorPanel message={getApiErrorMessage(election.error, "This election could not be found.")} backHref="/candidates" backLabel="Back to candidates" />
+      </Shell>
     );
   }
 
-  const canSubmit = positionId && bio.trim() && eligibilityConfirmed && declarationConfirmed;
+  const e = election.data;
 
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    setSelectedFile(file ?? null);
+  if (!nominationsOpen(e)) {
+    return (
+      <Shell title={e.name}>
+        <ErrorPanel message="Nominations for this election are closed." backHref="/candidates" backLabel="Back to candidates" />
+      </Shell>
+    );
   }
 
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!member || !election || !canSubmit) return; // re-narrows for TS inside this closure
-    setSubmitting(true);
-    submitCandidateApplication({
-      memberId: member.id,
-      memberName: member.name,
-      membershipNumber: member.membershipNumber ?? "—",
-      electionId: election.id,
-      positionId,
-      bio,
-      eligibilityConfirmed,
-      declarationConfirmed,
-      documentUrl: selectedFile?.name, // filename only — no real file storage exists yet
-    });
-    setTimeout(() => router.push("/my-candidacy"), 400);
+  const existing = (mine.data ?? []).find(
+    (c) => c.electionId === e.id && (c.status === "PENDING_REVIEW" || c.status === "APPROVED")
+  );
+  if (existing) {
+    return (
+      <Shell title={e.name}>
+        <div className="rounded-2xl border border-blue-200 bg-blue-50 p-5 text-sm text-blue-900">
+          <p className="font-medium">
+            You have already nominated yourself for {existing.position.name} in this election.
+          </p>
+          <p className="mt-1">To stand for a different position, withdraw that nomination first.</p>
+          <Link href="/my-candidacy" className="mt-3 inline-block font-bold text-[var(--sevs-navy)] hover:underline">
+            Go to My Candidacy
+          </Link>
+        </div>
+      </Shell>
+    );
+  }
+
+  const length = manifesto.trim().length;
+
+  async function handleSubmit(ev: FormEvent) {
+    ev.preventDefault();
+    const next: typeof errors = {};
+    if (!positionId) next.positionId = "Choose the position you want to stand for.";
+    if (length < MIN) next.manifesto = `Your manifesto must be at least ${MIN} characters (it is ${length}).`;
+    if (length > MAX) next.manifesto = `Your manifesto must be ${MAX.toLocaleString()} characters or fewer.`;
+    if (!declared) next.declared = "Tick the declaration to continue.";
+    setErrors(next);
+    if (Object.keys(next).length > 0) {
+      // Take keyboard and screen-reader users to the first problem.
+      const first = next.positionId ? ids.position : next.manifesto ? ids.manifesto : ids.declared;
+      document.getElementById(first)?.focus();
+      return;
+    }
+    try {
+      await nominate.mutateAsync({ positionId, manifesto: manifesto.trim() });
+      router.push("/my-candidacy?submitted=1");
+    } catch (err) {
+      const fieldErrors = getApiFieldErrors(err);
+      if (fieldErrors.length > 0) {
+        setErrors(Object.fromEntries(fieldErrors.map((f) => [f.field, f.message])));
+      }
+    }
   }
 
   return (
-    <>
-      <Topbar title="Candidate Application" subtitle={election.title} />
-
-      <form onSubmit={handleSubmit} className="max-w-2xl space-y-6 p-4 sm:p-8">
-        <div className="rounded-2xl border border-[var(--sevs-border)] bg-white p-5 shadow-sm sm:p-6">
-          <h3 className="mb-4 text-sm font-bold uppercase tracking-wide text-[var(--sevs-text-muted)]">Personal Information</h3>
-          <dl className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
-            <div><dt className="text-xs uppercase text-[var(--sevs-text-muted)]">Name</dt><dd className="mt-1 font-medium text-[var(--sevs-text-body)]">{member.name}</dd></div>
-            <div><dt className="text-xs uppercase text-[var(--sevs-text-muted)]">Membership No.</dt><dd className="mt-1 font-medium text-[var(--sevs-text-body)]">{member.membershipNumber ?? "—"}</dd></div>
-          </dl>
-        </div>
-
-        <div className="rounded-2xl border border-[var(--sevs-border)] bg-white p-5 shadow-sm sm:p-6">
-          <h3 className="mb-4 text-sm font-bold uppercase tracking-wide text-[var(--sevs-text-muted)]">Position</h3>
-          <select
-            value={positionId}
-            onChange={(e) => setPositionId(e.target.value)}
-            required
-            className="w-full rounded-lg border border-[var(--sevs-border)] px-3 py-2.5 text-sm text-[var(--sevs-text-body)] focus:border-[var(--sevs-navy)] focus:outline-none"
-          >
-            <option value="">Select a position...</option>
-            {election.positions.map((p) => (
-              <option key={p.id} value={p.id}>{p.title}</option>
-            ))}
-          </select>
-
-          <label className="mb-1 mt-4 block text-xs font-bold text-[var(--sevs-navy)]">Candidate Statement</label>
-          <textarea
-            value={bio}
-            onChange={(e) => setBio(e.target.value)}
-            rows={4}
-            required
-            placeholder="Briefly describe your background and why you're standing for this position..."
-            className="w-full rounded-lg border border-[var(--sevs-border)] px-3 py-2.5 text-sm focus:border-[var(--sevs-navy)] focus:outline-none"
-          />
-        </div>
-
-        <div className="rounded-2xl border border-[var(--sevs-border)] bg-white p-5 shadow-sm sm:p-6">
-          <h3 className="mb-4 text-sm font-bold uppercase tracking-wide text-[var(--sevs-text-muted)]">Supporting Documents</h3>
-
-          <label
-            htmlFor="candidate-document"
-            className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-[var(--sevs-border)] px-4 py-6 text-sm text-[var(--sevs-text-muted)] hover:border-[var(--sevs-navy)] hover:text-[var(--sevs-navy)]"
-          >
-            <Upload className="h-4 w-4" />
-            {selectedFile ? "Choose a different file" : "Click to select a document"}
-          </label>
-          <input
-            id="candidate-document"
-            type="file"
-            accept=".pdf,.jpg,.jpeg,.png"
-            onChange={handleFileChange}
-            className="hidden"
-          />
-
-          {selectedFile && (
-            <div className="mt-3 flex items-center justify-between rounded-lg bg-[var(--sevs-bg)] px-3 py-2 text-sm">
-              <span className="truncate text-[var(--sevs-text-body)]">{selectedFile.name}</span>
-              <button
-                type="button"
-                onClick={() => setSelectedFile(null)}
-                className="ml-2 shrink-0 text-xs font-bold text-red-600"
-              >
-                Remove
-              </button>
-            </div>
-          )}
-
-          <p className="mt-2 text-xs text-[var(--sevs-text-muted)]">
-            Accepted formats: PDF, JPG, PNG. This file stays in your browser only — there&apos;s no real upload/storage backend yet, so it won&apos;t persist after you leave this page.
-          </p>
-        </div>
-
-        <div className="rounded-2xl border border-[var(--sevs-border)] bg-white p-5 shadow-sm sm:p-6">
-          <h3 className="mb-4 text-sm font-bold uppercase tracking-wide text-[var(--sevs-text-muted)]">Eligibility & Declaration</h3>
-          <label className="flex items-start gap-3 py-2 text-sm text-[var(--sevs-text-body)]">
-            <input type="checkbox" checked={eligibilityConfirmed} onChange={(e) => setEligibilityConfirmed(e.target.checked)} className="mt-1 h-4 w-4" />
-            I confirm that I meet the SACCO&apos;s membership requirements and election rules for this position.
-          </label>
-          <label className="flex items-start gap-3 py-2 text-sm text-[var(--sevs-text-body)]">
-            <input type="checkbox" checked={declarationConfirmed} onChange={(e) => setDeclarationConfirmed(e.target.checked)} className="mt-1 h-4 w-4" />
-            I declare that the information provided in this application is accurate to the best of my knowledge.
-          </label>
-        </div>
-
-        <p className="text-xs text-[var(--sevs-text-muted)]">
-          Submitting this application does not guarantee candidacy. An Election Officer will verify your eligibility against SACCO requirements, and an independent Administrator must co-approve before you appear on the ballot.
+    <Shell title={e.name}>
+      <form onSubmit={handleSubmit} noValidate className="space-y-6">
+        <p className="flex items-start gap-2 rounded-xl bg-blue-50 px-4 py-3 text-sm text-blue-900">
+          <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+          <span>
+            An election officer will review your nomination. Members see it only once it is approved. Nominations close
+            when voting opens on {formatDateTime(e.startDate)}.
+          </span>
         </p>
 
-        <Button type="submit" disabled={!canSubmit} isLoading={submitting} className="w-full sm:w-auto sm:px-8">
-          Submit Application
-        </Button>
+        <section className="rounded-2xl border border-[var(--sevs-border)] bg-white p-5 sm:p-6">
+          <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-[var(--sevs-text-muted)]">You</h2>
+          <dl className="grid gap-4 text-sm sm:grid-cols-2">
+            <div>
+              <dt className="text-[var(--sevs-text-muted)]">Name on the ballot</dt>
+              <dd className="mt-0.5 font-semibold text-[var(--sevs-navy)]">{user?.fullName}</dd>
+            </div>
+            <div>
+              <dt className="text-[var(--sevs-text-muted)]">Membership number</dt>
+              <dd className="mt-0.5 font-semibold text-[var(--sevs-navy)]">{user?.membershipNumber ?? "—"}</dd>
+            </div>
+          </dl>
+          <p className="mt-3 text-xs text-[var(--sevs-text-muted)]">
+            Your name comes from your SACCO record. If it is wrong, contact the SACCO office.
+          </p>
+        </section>
+
+        <section className="space-y-5 rounded-2xl border border-[var(--sevs-border)] bg-white p-5 sm:p-6">
+          <div>
+            <label htmlFor={ids.position} className="mb-1 block text-sm font-bold text-[var(--sevs-navy)]">
+              Position
+            </label>
+            <select
+              id={ids.position}
+              value={positionId}
+              onChange={(ev) => setPositionId(ev.target.value)}
+              aria-invalid={!!errors.positionId}
+              aria-describedby={errors.positionId ? `${ids.position}-err` : undefined}
+              className="w-full rounded-lg border border-[var(--sevs-border)] bg-white px-3 py-2.5 text-sm text-[var(--sevs-text-body)] focus:border-[var(--sevs-navy)] focus:outline-none focus:ring-2 focus:ring-[var(--sevs-navy)]/20 aria-[invalid=true]:border-red-500"
+            >
+              <option value="">Choose a position…</option>
+              {(positions.data ?? []).map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+            {errors.positionId && (
+              <p id={`${ids.position}-err`} role="alert" className="mt-1 text-sm text-red-700">
+                {errors.positionId}
+              </p>
+            )}
+          </div>
+
+          <div>
+            <label htmlFor={ids.manifesto} className="mb-1 block text-sm font-bold text-[var(--sevs-navy)]">
+              Manifesto
+            </label>
+            <p id={ids.manifestoHint} className="mb-2 text-xs text-[var(--sevs-text-muted)]">
+              What you will do if elected and why members should choose you. Between {MIN} and{" "}
+              {MAX.toLocaleString()} characters. Members read this on the ballot.
+            </p>
+            <textarea
+              id={ids.manifesto}
+              value={manifesto}
+              onChange={(ev) => setManifesto(ev.target.value)}
+              rows={8}
+              maxLength={MAX}
+              aria-invalid={!!errors.manifesto}
+              aria-describedby={`${ids.manifestoHint} ${ids.manifesto}-count${errors.manifesto ? ` ${ids.manifesto}-err` : ""}`}
+              className="w-full rounded-lg border border-[var(--sevs-border)] px-3 py-2.5 text-sm focus:border-[var(--sevs-navy)] focus:outline-none focus:ring-2 focus:ring-[var(--sevs-navy)]/20 aria-[invalid=true]:border-red-500"
+            />
+            <p id={`${ids.manifesto}-count`} className="mt-1 text-right text-xs text-[var(--sevs-text-muted)]">
+              {length < MIN ? `${MIN - length} more characters needed` : `${length.toLocaleString()} / ${MAX.toLocaleString()}`}
+            </p>
+            {errors.manifesto && (
+              <p id={`${ids.manifesto}-err`} role="alert" className="mt-1 text-sm text-red-700">
+                {errors.manifesto}
+              </p>
+            )}
+          </div>
+
+          <div>
+            <label className="flex items-start gap-3 text-sm text-[var(--sevs-text-body)]">
+              <input
+                id={ids.declared}
+                type="checkbox"
+                checked={declared}
+                onChange={(ev) => setDeclared(ev.target.checked)}
+                aria-invalid={!!errors.declared}
+                aria-describedby={errors.declared ? `${ids.declared}-err` : undefined}
+                className="mt-0.5 h-4 w-4 accent-[var(--sevs-navy)]"
+              />
+              I confirm that I meet the SACCO&apos;s requirements for this position and that what I have written is true.
+            </label>
+            {errors.declared && (
+              <p id={`${ids.declared}-err`} role="alert" className="mt-1 text-sm text-red-700">
+                {errors.declared}
+              </p>
+            )}
+          </div>
+        </section>
+
+        {nominate.isError && getApiFieldErrors(nominate.error).length === 0 && (
+          <ErrorPanel message={getApiErrorMessage(nominate.error)} />
+        )}
+
+        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+          <Link
+            href="/candidates"
+            className="rounded-lg border border-[var(--sevs-border)] px-5 py-2.5 text-center text-sm font-bold text-[var(--sevs-navy)] hover:bg-gray-50"
+          >
+            Cancel
+          </Link>
+          <div className="sm:w-56">
+            <Button type="submit" isLoading={nominate.isPending}>
+              Submit nomination
+            </Button>
+          </div>
+        </div>
       </form>
+    </Shell>
+  );
+}
+
+function Shell({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <>
+      <Topbar title="Stand as a candidate" subtitle={title} />
+      <main className="mx-auto max-w-2xl p-4 sm:p-8">{children}</main>
     </>
   );
 }
