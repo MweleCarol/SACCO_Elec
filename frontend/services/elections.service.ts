@@ -26,3 +26,26 @@ export async function listCandidates(
   const res = await api.get<ApiSuccess<Candidate[]>>(`/elections/${electionId}/candidates`, { params });
   return res.data.data;
 }
+
+// ---------- Officer actions ----------
+
+export interface NewElectionInput {
+  name: string;
+  description?: string;
+  startDate: string; // ISO
+  endDate: string; // ISO
+  requiredApprovals: number;
+}
+
+export async function createElection(input: NewElectionInput): Promise<Election> {
+  const res = await api.post<ApiSuccess<Election>>("/elections", input);
+  return res.data.data;
+}
+
+export async function createPosition(
+  electionId: string,
+  input: { name: string; description?: string; order: number }
+): Promise<Position> {
+  const res = await api.post<ApiSuccess<Position>>(`/elections/${electionId}/positions`, input);
+  return res.data.data;
+}

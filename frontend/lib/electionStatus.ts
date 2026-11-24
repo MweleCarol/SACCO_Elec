@@ -5,7 +5,7 @@ import type { Election } from "@/types/api";
 // and an ARCHIVED one was either cancelled or finished with results.
 
 export type MemberPhase = "UPCOMING" | "OPEN" | "ENDED" | "RESULTS" | "CANCELLED";
-export type BadgeTone = "green" | "blue" | "gray" | "violet" | "red";
+export type BadgeTone = "green" | "blue" | "gray" | "violet" | "red" | "amber";
 
 export function memberPhase(e: Election, now: Date = new Date()): MemberPhase {
   const start = new Date(e.startDate);

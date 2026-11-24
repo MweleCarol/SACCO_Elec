@@ -161,7 +161,10 @@ export function Topbar({ title, subtitle }: TopbarProps) {
             >
               <Bell className="h-5 w-5 text-[var(--sevs-text-muted)]" />
               {unreadCount > 0 && (
-                <span className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-white">
+                <span
+                  aria-hidden="true"
+                  className="absolute -right-2 -top-2 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-600 px-1 text-[11px] font-bold leading-none text-white ring-2 ring-white"
+                >
                   {unreadCount > 9 ? "9+" : unreadCount}
                 </span>
               )}

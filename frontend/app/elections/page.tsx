@@ -1,6 +1,5 @@
 "use client";
 // app/elections/page.tsx
-import Link from "next/link";
 import { useState } from "react";
 import { useCurrentMember } from "@/hooks/useCurrentMember";
 import { useElectionList, useParticipationFor } from "@/hooks/useElections";
@@ -9,7 +8,7 @@ import { ElectionListCard } from "@/components/voter/ElectionListCard";
 import { EmptyState, ErrorPanel, LoadingCards } from "@/components/ui/LoadState";
 import { memberPhase, type MemberPhase } from "@/lib/electionStatus";
 import { getApiErrorMessage } from "@/services/api/errors";
-import { ElectionManagementTable } from "@/components/officer/ElectionManagementTable";
+import { StaffElectionList } from "@/components/staff/StaffElectionList";
 
 type TabKey = "OPEN" | "UPCOMING" | "PAST" | "ALL";
 
@@ -25,35 +24,13 @@ export default function ElectionsPage() {
 
   if (isLoading || !member) return null; // AppShell shows the loading/redirect state
 
-  // Officers and administrators still see the management table (mock data
-  // until the Officer portal is connected).
-  const isOfficerOrAdmin =
-    member.role === "ELECTION_OFFICER" || member.role === "ELECTION_ADMINISTRATOR";
+  // Officers, administrators and auditors see every election at every stage.
+  if (member.role !== "MEMBER") return <StaffElectionList role={member.role} />;
 
-  if (isOfficerOrAdmin) {
-    return (
-      <>
-        <Topbar
-          title="Elections"
-          subtitle="Create and manage SACCO elections"
-        />
-        <div className="space-y-5 p-4 sm:p-8">
-          <Link
-            href="/elections/new"
-            className="inline-block rounded-lg bg-[var(--sevs-navy)] px-4 py-2.5 text-sm font-bold text-white hover:bg-[var(--sevs-navy-hover)]"
-          >
-            + New Election
-          </Link>
-          <ElectionManagementTable />
-        </div>
-      </>
-    );
-  }
-
-  return <MemberElections canVote={member.role === "MEMBER"} />;
+  return <MemberElections canVote />;
 }
 
-// Members, and auditors (who see the same list read-only and cannot vote).
+// The member view: elections grouped by what the member can do now.
 function MemberElections({ canVote }: { canVote: boolean }) {
   const [tab, setTab] = useState<TabKey>("OPEN");
   const elections = useElectionList();
