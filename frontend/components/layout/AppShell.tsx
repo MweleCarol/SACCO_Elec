@@ -4,6 +4,10 @@ import { useEffect, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { RoleSidebar } from "@/components/layout/RoleSidebar";
+import {
+  MobileBottomNav,
+  hidesBottomNav,
+} from "@/components/layout/MobileBottomNav";
 
 const PUBLIC_PATHS = ["/", "/login", "/register"];
 
@@ -50,9 +54,21 @@ export function AppShell({ children }: { children: ReactNode }) {
     // "relative" makes that column the anchor for absolutely positioned
     // children (e.g. the screen-reader-only "sr-only" labels); without it they
     // anchor to <body>, escape the scroll box and add empty space below the app.
+    // On phones the bottom bar covers the last ~4.5rem of the screen, so the
+    // scroll column gets that much padding at the bottom (none on the ballot,
+    // where the bar is hidden, and none from md up, where the sidebar is used).
     <div className="flex h-dvh overflow-hidden bg-[var(--sevs-bg)]">
       <RoleSidebar role={user.role} />
-      <div className="relative min-w-0 flex-1 overflow-y-auto">{children}</div>
+      <div
+        className={`relative min-w-0 flex-1 overflow-y-auto md:pb-0 ${
+          hidesBottomNav(pathname)
+            ? ""
+            : "pb-[calc(4.5rem+env(safe-area-inset-bottom))]"
+        }`}
+      >
+        {children}
+      </div>
+      <MobileBottomNav role={user.role} />
     </div>
   );
 }

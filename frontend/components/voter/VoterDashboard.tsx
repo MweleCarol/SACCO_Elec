@@ -103,9 +103,11 @@ export function VoterDashboard({ user }: VoterDashboardProps) {
           label="Upcoming"
           value={upcoming.length}
           hint={
-            upcoming[0]
-              ? `Next opens ${timeUntil(upcoming[0].startDate)}`
-              : "None announced yet"
+            !upcoming[0]
+              ? "None announced yet"
+              : new Date(upcoming[0].startDate) > new Date()
+                ? `Next opens ${timeUntil(upcoming[0].startDate)}`
+                : "Waiting for officials to open voting"
           }
           icon={<CalendarClock className="h-4 w-4 text-[var(--sevs-navy)]" />}
         />

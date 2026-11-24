@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Bell, Menu, Search, X } from "lucide-react";
 import { useCurrentMember } from "@/hooks/useCurrentMember";
 import { formatRoleLabel } from "@/lib/format";
 import { MobileNavDrawer } from "@/components/layout/MobileNavDrawer";
+import { hidesBottomNav } from "@/components/layout/MobileBottomNav";
 import { NotificationPanel } from "@/components/voter/NotificationPanel";
 import {
   useMarkRead,
@@ -23,6 +24,7 @@ export function Topbar({ title, subtitle }: TopbarProps) {
   const router = useRouter();
   const { member } = useCurrentMember();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const showMenuButton = hidesBottomNav(usePathname());
   const [panelOpen, setPanelOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -106,13 +108,17 @@ export function Topbar({ title, subtitle }: TopbarProps) {
     <>
       <header className="flex items-center justify-between gap-3 border-b border-[var(--sevs-border)] bg-white px-4 py-4 sm:px-8 sm:py-5">
         <div className="flex min-w-0 items-center gap-3">
-          <button
-            onClick={() => setDrawerOpen(true)}
-            className="shrink-0 text-[var(--sevs-navy)] md:hidden"
-            aria-label="Open menu"
-          >
-            <Menu className="h-6 w-6" />
-          </button>
+          {/* Phones use the bottom bar; the menu button only appears where
+              that bar is hidden (the ballot), so there is always a way out. */}
+          {showMenuButton && (
+            <button
+              onClick={() => setDrawerOpen(true)}
+              className="shrink-0 text-[var(--sevs-navy)] md:hidden"
+              aria-label="Open menu"
+            >
+              <Menu className="h-6 w-6" />
+            </button>
+          )}
           <div className="min-w-0">
             <h1 className="truncate text-xl font-extrabold text-[var(--sevs-navy)] sm:text-2xl">
               {title}
