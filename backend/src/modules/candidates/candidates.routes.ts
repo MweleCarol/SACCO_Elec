@@ -4,8 +4,6 @@ import { authorize } from "../../shared/middleware/authorize";
 import { validate } from "../../shared/middleware/validate";
 import * as controller from "./candidates.controller";
 import {
-  createCandidateSchema,
-  updateCandidateSchema,
   candidateDecisionSchema,
   withdrawCandidateSchema,
   listCandidatesQuerySchema,
@@ -22,24 +20,17 @@ nestedRouter.get(
   validate({ params: electionIdParamSchema, query: listCandidatesQuerySchema }),
   controller.list,
 );
-nestedRouter.post(
-  "/",
-  authorize("ELECTION_OFFICER"),
-  validate({ params: electionIdParamSchema, body: createCandidateSchema }),
-  controller.register,
-);
+// No officer "create" route: every candidate is a member who applied through
+// POST /elections/:electionId/nominations, so each one is a verified member.
 
 // Standalone /candidates/:id
 export const standaloneRouter = Router();
 standaloneRouter.use(authenticate);
 // The logged-in member's own nominations. Declared before the "/:id" routes.
 standaloneRouter.get("/mine", authorize("MEMBER"), controller.listMine);
-standaloneRouter.patch(
-  "/:id",
-  authorize("ELECTION_OFFICER"),
-  validate({ params: candidateIdParamSchema, body: updateCandidateSchema }),
-  controller.update,
-);
+// No officer "edit" route either: a candidate's name comes from their member
+// record and the manifesto is their own words. To change it they withdraw and
+// apply again.
 standaloneRouter.post(
   "/:id/approve",
   authorize("ELECTION_OFFICER"),

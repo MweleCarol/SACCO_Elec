@@ -240,8 +240,8 @@ A bad row does not stop the batch; it appears in `errors`.
 | `GET /elections/:id` | Any | — | `Election` (404 if hidden from a member) |
 | `POST /elections` | O | `{ name, description?, startDate, endDate, requiredApprovals? (1–10, default 2) }`. Start must be in the future; end after start. | `Election` (201, `DRAFT`) |
 | `PATCH /elections/:id` | O | Any create field. **DRAFT only.** | `Election` |
-| `POST /elections/:id/submit-approval` | O | — | `Election` (`PENDING_APPROVAL`) |
-| `POST /elections/:id/review-approval` | A | `{ decision: "APPROVE" \| "REJECT", comment? }` | `Election` (`APPROVED` or back to `DRAFT`) |
+| `POST /elections/:id/submit-approval` | O | — | `Election` (`PENDING_APPROVAL`). **409** if the election has no positions. |
+| `POST /elections/:id/review-approval` | A | `{ decision: "APPROVE" \| "REJECT", comment? }` | `Election` (`APPROVED` or back to `DRAFT`). The officer who created it gets an `APPROVAL_DECIDED` notification that includes the comment. |
 | `POST /elections/:id/activate` | O | — | `ApprovalRequest` **(DAT)** |
 | `POST /elections/:id/reschedule` | O | `{ startDate, endDate }`. Not while `ACTIVE`. | `ApprovalRequest` **(DAT)** |
 | `POST /elections/:id/cancel` | A | `{ reason }` (5+ characters) | `ApprovalRequest` **(DAT)** |
@@ -258,11 +258,12 @@ Calling `activate`, `reschedule` or `cancel` again while a request is pending re
 | `DELETE /positions/:id` | O | — | `null`. 409 if it has candidates. |
 
 ### Candidates (changes locked once the election is `ACTIVE`)
+
+Every candidate is a member who applied (see *Self-nomination*). There is no officer endpoint to add or edit a candidate: officers review applications with approve/reject. A member changes their application by withdrawing and applying again.
+
 | Method & path | Roles | Request | `data` |
 |---|---|---|---|
 | `GET /elections/:electionId/candidates` | Any | `?status=&positionId=` | `Candidate[]` (members: approved only, no `memberId`) |
-| `POST /elections/:electionId/candidates` | O | `{ positionId, displayName, manifesto?, photoUrl?, memberId? }` | `Candidate` (201, `PENDING_REVIEW`) |
-| `PATCH /candidates/:id` | O | `{ displayName?, manifesto?, photoUrl? }` | `Candidate` |
 | `POST /candidates/:id/approve` | O | `{ decision: "APPROVE", comment? }` | `Candidate` |
 | `POST /candidates/:id/reject` | O | `{ decision: "REJECT", comment? }` | `Candidate`. A rejected candidate cannot be approved later (409). |
 
@@ -348,7 +349,7 @@ Ties go to the earliest-registered candidate. Group by `positionName` for displa
 | Live turnout on the member dashboard | **Decided: hide from members.** Members see turnout with the published results. |
 | "Ballot Reference" after voting | **Decided: remove.** Conflicts with vote secrecy. |
 | "Invalid votes" and the votes-over-time chart on results | Remove. Electronic ballots are validated before saving, and vote times are deliberately hidden. |
-| Candidate photo / supporting-document upload | No file storage yet. Nomination is text only (`photoUrl` can be set by an officer as a link). |
+| Candidate photo / supporting-document upload | No file storage yet. Nominations are text only. |
 | Forgot password | Not available. Hide the link or replace it with "Contact your SACCO office". |
 | Audit log actor name, role, IP address, device, risk level | `AuditLogEntry` has `actorId` only. Look up names via `GET /users` (administrators), or add fields to the backend later. |
 | `branch` and phone number on the profile | Not in `User` yet; needs a small backend addition. |

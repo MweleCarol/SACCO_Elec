@@ -20,8 +20,6 @@ import {
   MyCandidacyDto,
 } from "./candidates.dto";
 import {
-  CreateCandidateInput,
-  UpdateCandidateInput,
   CandidateDecisionInput,
   ListCandidatesQuery,
   SelfNominationInput,
@@ -79,67 +77,6 @@ export async function listCandidates(
   return seesEverything(role)
     ? candidates.map(toCandidateDto)
     : candidates.map(toPublicCandidateDto);
-}
-
-export async function registerCandidate(
-  officerId: string,
-  electionId: string,
-  input: CreateCandidateInput,
-): Promise<CandidateDto> {
-  await assertElectionAcceptsCandidateChanges(electionId);
-
-  const positionValid = await candidatesRepository.positionBelongsToElection(
-    input.positionId,
-    electionId,
-  );
-  if (!positionValid) {
-    throw new NotFoundError("Position (in this election)");
-  }
-
-  const candidate = await candidatesRepository.createCandidate({
-    electionId,
-    ...input,
-  });
-
-  await writeAuditLog({
-    actorId: officerId,
-    action: "CANDIDATE_REGISTERED",
-    resourceType: "Candidate",
-    resourceId: candidate.id,
-    electionId,
-    outcome: "SUCCESS",
-  });
-
-  return toCandidateDto(candidate);
-}
-
-export async function updateCandidate(
-  officerId: string,
-  candidateId: string,
-  input: UpdateCandidateInput,
-): Promise<CandidateDto> {
-  const candidate = await getCandidateOrThrow(candidateId);
-  await assertElectionAcceptsCandidateChanges(candidate.electionId);
-
-  if (candidate.status === "WITHDRAWN" || candidate.status === "REJECTED") {
-    throw new ConflictError("Cannot edit a withdrawn or rejected candidate.");
-  }
-
-  const updated = await candidatesRepository.updateCandidate(
-    candidateId,
-    input,
-  );
-
-  await writeAuditLog({
-    actorId: officerId,
-    action: "CANDIDATE_UPDATED",
-    resourceType: "Candidate",
-    resourceId: candidateId,
-    electionId: candidate.electionId,
-    outcome: "SUCCESS",
-  });
-
-  return toCandidateDto(updated);
 }
 
 export async function decideCandidate(

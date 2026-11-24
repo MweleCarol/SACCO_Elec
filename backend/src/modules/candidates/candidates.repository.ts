@@ -17,18 +17,7 @@ export function listCandidatesByElection(
   return prisma.candidate.findMany({ where, orderBy: { createdAt: "asc" } });
 }
 
-export function createCandidate(data: {
-  electionId: string; positionId: string; displayName: string;
-  manifesto?: string; photoUrl?: string; memberId?: string;
-}): Promise<Candidate> {
-  return prisma.candidate.create({ data });
-}
 
-export function updateCandidate(
-  id: string, data: Partial<{ displayName: string; manifesto: string; photoUrl: string }>
-): Promise<Candidate> {
-  return prisma.candidate.update({ where: { id }, data });
-}
 
 export function setCandidateStatus(
   id: string, status: CandidateStatus, withdrawnAt?: Date
