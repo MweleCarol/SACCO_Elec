@@ -26,6 +26,7 @@ function isActivePath(pathname: string | null, href: string): boolean {
 // Phone navigation: the role's four main pages, plus "More" for the rest.
 // Within thumb reach and always visible, unlike a menu behind a ☰ button.
 // Hidden from md (tablet) upwards, where the sidebar takes over.
+// When a page under "More" is open, "More" is the highlighted item.
 export function MobileBottomNav({ role }: { role: UserRole }) {
   const pathname = usePathname();
   const [moreOpen, setMoreOpen] = useState(false);
@@ -38,55 +39,81 @@ export function MobileBottomNav({ role }: { role: UserRole }) {
   const secondaryItems = config.items.filter((i) => !i.primary);
   const moreActive = secondaryItems.some((i) => isActivePath(pathname, i.href));
 
+  // Every entry in the bar: the main pages, then "More".
+  const entries = [
+    ...primaryItems.map((i) => ({ key: i.href, label: i.label, Icon: i.icon, href: i.href, active: isActivePath(pathname, i.href) })),
+    ...(secondaryItems.length > 0
+      ? [{ key: "more", label: "More", Icon: MoreHorizontal, href: null, active: moreActive || moreOpen }]
+      : []),
+  ];
+
   return (
     <>
+      {/* A floating bar. Only the active page shows its name, in a pill;
+          the others are icons, with a tooltip on hover or keyboard focus and
+          a proper accessible name for screen readers. This keeps every
+          button full-size even on narrow (320-360 px) phones. */}
       <nav
         aria-label="Main"
-        className="fixed inset-x-0 bottom-0 z-40 border-t border-[var(--sevs-border)] bg-white pb-[env(safe-area-inset-bottom)] shadow-[0_-2px_8px_rgba(0,0,0,0.04)] md:hidden"
+        className="fixed inset-x-0 bottom-0 z-40 px-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] min-[360px]:px-3 md:hidden"
       >
-        <ul className="flex">
-          {primaryItems.map(({ href, label, icon: Icon }) => {
-            const active = isActivePath(pathname, href);
-            return (
-              <li key={href} className="flex-1">
-                <Link
-                  href={href}
-                  aria-current={active ? "page" : undefined}
-                  className={clsx(
-                    "flex min-h-14 flex-col items-center justify-center gap-0.5 px-1 py-2 text-xs",
-                    active ? "font-bold text-[var(--sevs-navy)]" : "font-medium text-gray-600"
-                  )}
-                >
-                  {/* The pill behind the active icon: a shape cue, not colour alone. */}
-                  <span className={clsx("flex h-7 w-12 items-center justify-center rounded-full", active && "bg-[var(--sevs-navy)]/10")}>
-                    <Icon className="h-5 w-5" strokeWidth={active ? 2.5 : 2} aria-hidden="true" />
+        <ul className="mx-auto flex max-w-md items-center justify-between gap-0.5 rounded-2xl border border-[var(--sevs-border)] bg-white px-1 py-1.5 shadow-[0_4px_16px_rgba(0,0,0,0.08)] min-[360px]:px-2">
+          {entries.map(({ key, label, Icon, href, active }, index) => {
+            const edge = index === 0 ? "left-0" : index === entries.length - 1 ? "right-0" : "left-1/2 -translate-x-1/2";
+            const look = clsx(
+              "group relative flex h-11 items-center justify-center rounded-full transition-all duration-200 motion-reduce:transition-none",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sevs-navy)] focus-visible:ring-offset-2",
+              active
+                ? "gap-1 bg-[var(--sevs-navy)]/10 px-3 text-[var(--sevs-navy)] min-[360px]:gap-1.5 min-[360px]:px-3.5"
+                : "w-11 text-gray-600 hover:bg-gray-100"
+            );
+            const content = (
+              <>
+                <Icon className="h-5 w-5 shrink-0" strokeWidth={active ? 2.5 : 2} aria-hidden="true" />
+                {active ? (
+                  <span className="whitespace-nowrap text-xs font-bold min-[360px]:text-sm">{label}</span>
+                ) : (
+                  // Visual tooltip only; the accessible name comes from aria-label.
+                  <span
+                    aria-hidden="true"
+                    className={clsx(
+                      "pointer-events-none absolute bottom-full mb-2 hidden whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-xs font-medium text-white shadow",
+                      "group-hover:block group-focus-visible:block",
+                      edge
+                    )}
+                  >
+                    {label}
                   </span>
-                  <span className="max-w-full truncate">{label}</span>
-                </Link>
+                )}
+              </>
+            );
+            return (
+              <li key={key}>
+                {href ? (
+                  <Link
+                    href={href}
+                    aria-label={active ? undefined : label}
+                    aria-current={active ? "page" : undefined}
+                    className={look}
+                  >
+                    {content}
+                  </Link>
+                ) : (
+                  <button
+                    ref={moreButtonRef}
+                    type="button"
+                    onClick={() => setMoreOpen(true)}
+                    aria-label={active ? undefined : label}
+                    aria-haspopup="dialog"
+                    aria-expanded={moreOpen}
+                    className={look}
+                  >
+                    {content}
+                  </button>
+                )}
               </li>
             );
           })}
-
-          {secondaryItems.length > 0 && (
-            <li className="flex-1">
-              <button
-                ref={moreButtonRef}
-                type="button"
-                onClick={() => setMoreOpen(true)}
-                aria-haspopup="dialog"
-                aria-expanded={moreOpen}
-                className={clsx(
-                  "flex min-h-14 w-full flex-col items-center justify-center gap-0.5 px-1 py-2 text-xs",
-                  moreActive ? "font-bold text-[var(--sevs-navy)]" : "font-medium text-gray-600"
-                )}
-              >
-                <span className={clsx("flex h-7 w-12 items-center justify-center rounded-full", moreActive && "bg-[var(--sevs-navy)]/10")}>
-                  <MoreHorizontal className="h-5 w-5" aria-hidden="true" />
-                </span>
-                More
-              </button>
-            </li>
-          )}
         </ul>
       </nav>
 

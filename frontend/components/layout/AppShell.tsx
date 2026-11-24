@@ -63,7 +63,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         className={`relative min-w-0 flex-1 overflow-y-auto md:pb-0 ${
           hidesBottomNav(pathname)
             ? ""
-            : "pb-[calc(4.5rem+env(safe-area-inset-bottom))]"
+            : "pb-[calc(5.5rem+env(safe-area-inset-bottom))]"
         }`}
       >
         {children}
