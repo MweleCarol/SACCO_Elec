@@ -132,3 +132,8 @@ export function markClosed(id: string, officerId: string, eligibleVoterCount: nu
 export function countEligibleVoters(): Promise<number> {
   return prisma.user.count({ where: { role: "MEMBER", membershipStatus: "ACTIVE" } });
 }
+
+// Used before an election goes for review: a ballot needs positions.
+export function countPositions(electionId: string): Promise<number> {
+  return prisma.position.count({ where: { electionId } });
+}

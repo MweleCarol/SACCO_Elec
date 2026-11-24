@@ -32,7 +32,7 @@ import {
 // this file imports requestApproval. Safe because neither side calls the other
 // at module-load time, only inside async function bodies.
 import { requestApproval } from "../approvals/approvals.service";
-import { notifyAllActiveMembers } from "../notifications/notifications.service";
+import { notify, notifyAllActiveMembers } from "../notifications/notifications.service";
 
 async function getElectionOrThrow(id: string): Promise<Election> {
   const election = await electionsRepository.findElectionById(id);
@@ -158,6 +158,11 @@ export async function submitForApproval(
     throw err;
   }
 
+  // An administrator cannot meaningfully review an election with no ballot.
+  if ((await electionsRepository.countPositions(electionId)) === 0) {
+    throw new ConflictError("Add at least one position before submitting the election for review.");
+  }
+
   const updated = await electionsRepository.setElectionStatus(
     electionId,
     "PENDING_APPROVAL",
@@ -210,6 +215,18 @@ export async function reviewApproval(
     outcome: "SUCCESS",
     metadata: { comment: input.comment },
   });
+
+  // Tell the officer who prepared it, with the administrator's comment, so a
+  // returned draft says what to fix. Fire-and-forget, like other notifications.
+  const approved = input.decision === "APPROVE";
+  notify([election.createdById], {
+    type: "APPROVAL_DECIDED",
+    title: approved ? "Your election was approved" : "Your election was sent back to draft",
+    message: approved
+      ? `"${election.name}" was approved. Members can now see it.${input.comment ? ` Comment: ${input.comment}` : ""}`
+      : `"${election.name}" needs changes before it can be approved.${input.comment ? ` Administrator's note: ${input.comment}` : ""}`,
+    electionId,
+  }).catch(() => {});
 
   return toElectionDto(updated);
 }

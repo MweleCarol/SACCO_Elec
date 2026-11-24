@@ -1,5 +1,5 @@
 import { prisma } from "../../config/prisma";
-import { api, bearer, createElection, createUser } from "../../../tests/helpers";
+import { api, bearer, createElection, createPosition, createUser, waitFor } from "../../../tests/helpers";
 
 const future = (h: number) => new Date(Date.now() + h * 3600_000).toISOString();
 
@@ -51,10 +51,24 @@ describe("lifecycle", () => {
     const admin = await createUser("ELECTION_ADMINISTRATOR");
     const e = await createElection(officer.id);
 
+    // No positions yet: nothing for the administrator to review.
+    const empty = await api().post(`/api/v1/elections/${e.id}/submit-approval`).set(bearer(officer));
+    expect(empty.status).toBe(409);
+    expect(empty.body.message).toMatch(/at least one position/);
+    await createPosition(e.id, "Chairperson");
+
     expect((await api().post(`/api/v1/elections/${e.id}/submit-approval`).set(bearer(officer))).body.data.status).toBe("PENDING_APPROVAL");
     // Officers cannot review; admins can.
     expect((await api().post(`/api/v1/elections/${e.id}/review-approval`).set(bearer(officer)).send({ decision: "APPROVE" })).status).toBe(403);
     expect((await api().post(`/api/v1/elections/${e.id}/review-approval`).set(bearer(admin)).send({ decision: "REJECT", comment: "Fix dates" })).body.data.status).toBe("DRAFT");
+
+    // The officer who created it is told why.
+    const note = await waitFor(
+      () => prisma.notification.findFirst({ where: { userId: officer.id, title: "Your election was sent back to draft" } }),
+      (n) => n !== null
+    );
+    expect(note!.message).toContain("Fix dates");
+    expect(note!.electionId).toBe(e.id);
 
     await api().post(`/api/v1/elections/${e.id}/submit-approval`).set(bearer(officer));
     expect((await api().post(`/api/v1/elections/${e.id}/review-approval`).set(bearer(admin)).send({ decision: "APPROVE" })).body.data.status).toBe("APPROVED");
