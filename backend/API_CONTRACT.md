@@ -242,7 +242,7 @@ A bad row does not stop the batch; it appears in `errors`.
 | `PATCH /elections/:id` | O | Any create field. **DRAFT only.** | `Election` |
 | `POST /elections/:id/submit-approval` | O | — | `Election` (`PENDING_APPROVAL`). **409** if the election has no positions. |
 | `POST /elections/:id/review-approval` | A | `{ decision: "APPROVE" \| "REJECT", comment? }` | `Election` (`APPROVED` or back to `DRAFT`). The officer who created it gets an `APPROVAL_DECIDED` notification that includes the comment. |
-| `POST /elections/:id/activate` | O | — | `ApprovalRequest` **(DAT)** |
+| `POST /elections/:id/activate` | O | — | `ApprovalRequest` **(DAT)**. **409** unless the ballot is complete: at least one position, every position with at least one `APPROVED` candidate, and `endDate` still in the future. Checked again when the final approval executes (a candidate may have withdrawn); if it fails then, the decision returns 409 and the election stays as it was. |
 | `POST /elections/:id/reschedule` | O | `{ startDate, endDate }`. Not while `ACTIVE`. | `ApprovalRequest` **(DAT)** |
 | `POST /elections/:id/cancel` | A | `{ reason }` (5+ characters) | `ApprovalRequest` **(DAT)** |
 | `POST /elections/:id/close` | O | — | `Election` (`CLOSED`). Direct, no DAT. |

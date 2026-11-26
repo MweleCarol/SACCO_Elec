@@ -90,6 +90,14 @@ export async function createCandidate(
 // An election that is ACTIVE and inside its voting window, with two positions
 // and two approved candidates each. Voting tests need this state, and it can't
 // be reached through the API alone because creation requires a future start date.
+// One position with one approved candidate: the minimum ballot on which
+// voting may be opened (activation refuses anything less).
+export async function addReadyBallot(electionId: string) {
+  const position = await createPosition(electionId, "Chairperson", 0);
+  const candidate = await createCandidate(electionId, position.id, "APPROVED", "Ready Candidate");
+  return { position, candidate };
+}
+
 export async function createOpenElection(officerId: string, requiredApprovals = 2) {
   const now = Date.now();
   const election = await createElection(officerId, {

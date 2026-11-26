@@ -32,7 +32,10 @@ import {
 // this file imports requestApproval. Safe because neither side calls the other
 // at module-load time, only inside async function bodies.
 import { requestApproval } from "../approvals/approvals.service";
-import { notify, notifyAllActiveMembers } from "../notifications/notifications.service";
+import {
+  notify,
+  notifyAllActiveMembers,
+} from "../notifications/notifications.service";
 
 async function getElectionOrThrow(id: string): Promise<Election> {
   const election = await electionsRepository.findElectionById(id);
@@ -160,7 +163,9 @@ export async function submitForApproval(
 
   // An administrator cannot meaningfully review an election with no ballot.
   if ((await electionsRepository.countPositions(electionId)) === 0) {
-    throw new ConflictError("Add at least one position before submitting the election for review.");
+    throw new ConflictError(
+      "Add at least one position before submitting the election for review.",
+    );
   }
 
   const updated = await electionsRepository.setElectionStatus(
@@ -221,7 +226,9 @@ export async function reviewApproval(
   const approved = input.decision === "APPROVE";
   notify([election.createdById], {
     type: "APPROVAL_DECIDED",
-    title: approved ? "Your election was approved" : "Your election was sent back to draft",
+    title: approved
+      ? "Your election was approved"
+      : "Your election was sent back to draft",
     message: approved
       ? `"${election.name}" was approved. Members can now see it.${input.comment ? ` Comment: ${input.comment}` : ""}`
       : `"${election.name}" needs changes before it can be approved.${input.comment ? ` Administrator's note: ${input.comment}` : ""}`,
@@ -316,11 +323,39 @@ export async function autoCloseEndedElections(
   return closed;
 }
 
+// Voting can only open on a complete ballot: at least one position, every
+// position with at least one approved candidate, and a voting period that has
+// not already ended. Checked when activation is requested and again inside the
+// activation transaction, because a candidate may withdraw in between.
+async function assertBallotReady(
+  election: Election,
+  tx?: Prisma.TransactionClient,
+): Promise<void> {
+  const positions = await electionsRepository.ballotReadiness(election.id, tx);
+  if (positions.length === 0) {
+    throw new ConflictError("The ballot has no positions.");
+  }
+  const empty = positions
+    .filter((p) => p._count.candidates === 0)
+    .map((p) => p.name);
+  if (empty.length > 0) {
+    throw new ConflictError(
+      `Voting cannot open yet: no approved candidate for ${empty.join(", ")}.`,
+    );
+  }
+  if (election.endDate <= new Date()) {
+    throw new ConflictError(
+      "The voting period has already ended. Reschedule the election before opening voting.",
+    );
+  }
+}
+
 // --- These three REQUEST DAT approval; they do not transition the election ---
 
 export async function activateElection(officerId: string, electionId: string) {
   const election = await getElectionOrThrow(electionId);
   assertTransitionOrConflict(election.status, "ACTIVE");
+  await assertBallotReady(election);
 
   return requestApproval({
     actionType: "ELECTION_ACTIVATION",
@@ -400,6 +435,10 @@ export async function executeActivation(
   tx: Prisma.TransactionClient,
 ): Promise<() => void> {
   await assertTransitionInTx(tx, electionId, "ACTIVE");
+  const current = await tx.election.findUniqueOrThrow({
+    where: { id: electionId },
+  });
+  await assertBallotReady(current, tx);
 
   const election = await tx.election.update({
     where: { id: electionId },

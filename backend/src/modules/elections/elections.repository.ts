@@ -133,6 +133,16 @@ export function countEligibleVoters(): Promise<number> {
   return prisma.user.count({ where: { role: "MEMBER", membershipStatus: "ACTIVE" } });
 }
 
+// Each position with how many APPROVED candidates it has, in ballot order.
+// Takes the client so it can run inside the activation transaction too.
+export function ballotReadiness(electionId: string, client: Prisma.TransactionClient = prisma) {
+  return client.position.findMany({
+    where: { electionId },
+    orderBy: { order: "asc" },
+    select: { name: true, _count: { select: { candidates: { where: { status: "APPROVED" } } } } },
+  });
+}
+
 // Used before an election goes for review: a ballot needs positions.
 export function countPositions(electionId: string): Promise<number> {
   return prisma.position.count({ where: { electionId } });
