@@ -13,10 +13,14 @@ export async function login(email: string, password: string): Promise<LoginRespo
   return data;
 }
 
-export async function verifyMfa(mfaChallengeToken: string, totpCode: string): Promise<LoginSuccess> {
-  const res = await api.post<ApiSuccess<LoginSuccess>>(
-    "/auth/verify-mfa", { mfaChallengeToken, totpCode }, { skipAuthRefresh: true }
-  );
+// The second step: the 6-digit app code, or a one-time backup code.
+export async function verifyMfa(
+  mfaChallengeToken: string,
+  code: string,
+  kind: "totp" | "backup" = "totp"
+): Promise<LoginSuccess> {
+  const body = kind === "backup" ? { mfaChallengeToken, backupCode: code } : { mfaChallengeToken, totpCode: code };
+  const res = await api.post<ApiSuccess<LoginSuccess>>("/auth/verify-mfa", body, { skipAuthRefresh: true });
   setAccessToken(res.data.data.accessToken);
   return res.data.data;
 }

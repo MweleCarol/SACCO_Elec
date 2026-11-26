@@ -1,6 +1,14 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import * as authService from "@/services/auth.service";
 import { onSessionExpired } from "@/services/api/axios";
 import type { LoginResponse, User } from "@/types/api";
@@ -15,7 +23,11 @@ interface AuthContextValue {
   user: User | null;
   status: AuthStatus;
   login: (email: string, password: string) => Promise<LoginResponse>;
-  verifyMfa: (mfaChallengeToken: string, totpCode: string) => Promise<void>;
+  verifyMfa: (
+    mfaChallengeToken: string,
+    code: string,
+    kind?: "totp" | "backup",
+  ) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
@@ -52,7 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(null);
         setStatus("anonymous");
       }),
-    []
+    [],
   );
 
   const login = useCallback(async (email: string, password: string) => {
@@ -64,11 +76,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return result; // the caller shows the MFA step when mfaRequired is true
   }, []);
 
-  const verifyMfa = useCallback(async (mfaChallengeToken: string, totpCode: string) => {
-    const result = await authService.verifyMfa(mfaChallengeToken, totpCode);
-    setUser(result.user);
-    setStatus("authenticated");
-  }, []);
+  const verifyMfa = useCallback(
+    async (
+      mfaChallengeToken: string,
+      code: string,
+      kind: "totp" | "backup" = "totp",
+    ) => {
+      const result = await authService.verifyMfa(mfaChallengeToken, code, kind);
+      setUser(result.user);
+      setStatus("authenticated");
+    },
+    [],
+  );
 
   const logout = useCallback(async () => {
     await authService.logout();
@@ -83,7 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(
     () => ({ user, status, login, verifyMfa, logout, refreshUser }),
-    [user, status, login, verifyMfa, logout, refreshUser]
+    [user, status, login, verifyMfa, logout, refreshUser],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

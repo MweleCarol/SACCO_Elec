@@ -13,6 +13,7 @@ import {
   ErrorPanel,
   LoadingCards,
 } from "@/components/ui/LoadState";
+import { TwoFactorSuggestion } from "@/components/account/TwoFactorSuggestion";
 
 interface VoterDashboardProps {
   user: Member;
@@ -83,6 +84,8 @@ export function VoterDashboard({ user }: VoterDashboardProps) {
           </Link>
         </section>
       )}
+
+      <TwoFactorSuggestion />
 
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
         <StatCard

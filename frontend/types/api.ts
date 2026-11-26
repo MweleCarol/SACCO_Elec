@@ -299,3 +299,15 @@ export interface Turnout {
   turnoutPercent: number | null;
   isLive: boolean; // true while voting is open
 }
+
+
+// ---------- Profile and two-factor (GET /auth/profile, /auth/mfa/*) ----------
+
+export interface Profile extends User {
+  phoneNumber: string | null;
+  branch: string | null;
+  membershipStatus: "ACTIVE" | "INACTIVE" | "SUSPENDED" | "EXITED" | null;
+  memberSince: string;
+  backupCodesRemaining: number | null; // null when two-factor is off
+  mfaRequired: boolean; // staff cannot turn it off
+}
