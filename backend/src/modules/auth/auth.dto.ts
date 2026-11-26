@@ -42,3 +42,23 @@ export interface MfaEnrollmentDto {
 export interface RefreshResponseDto {
   accessToken: string;
 }
+
+
+
+// Returned once when two-factor is confirmed (or codes are regenerated).
+// The plain codes are never stored and can never be fetched again.
+export interface BackupCodesDto {
+  backupCodes: string[];
+}
+
+// The signed-in user's own profile page.
+export interface ProfileDto extends SafeUserDto {
+  phoneNumber: string | null;
+  branch: string | null;
+  membershipStatus: string | null;
+  memberSince: Date;
+  // Unused backup codes left; null when two-factor is off.
+  backupCodesRemaining: number | null;
+  // Two-factor cannot be turned off for officers, administrators and auditors.
+  mfaRequired: boolean;
+}

@@ -34,6 +34,7 @@ model User {
   notifications     Notification[]
   participations    Participation[]
   refreshTokens     RefreshToken[]
+  mfaBackupCodes    MfaBackupCode[]
 
   @@index([role])
   @@index([status])
@@ -359,4 +360,18 @@ enum ResultStatus {
   DRAFT
   VERIFIED
   PUBLISHED
+}
+
+
+// One-time two-factor backup codes. Only an HMAC of each code is stored.
+model MfaBackupCode {
+  id        String    @id @default(uuid())
+  userId    String
+  codeHash  String
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@unique([userId, codeHash])
+  @@index([userId])
 }

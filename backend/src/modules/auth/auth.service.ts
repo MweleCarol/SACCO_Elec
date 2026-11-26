@@ -11,11 +11,69 @@ import { ForbiddenError } from "../../shared/errors/ForbiddenError";
 import { ValidationError } from "../../shared/errors/ValidationError";
 import { parseDurationMs } from "../../shared/utils/duration";
 import { encryptPayload, decryptPayload } from "../../shared/utils/crypto";
-import { signAccessToken, signMfaChallengeToken, verifyMfaChallengeToken } from "../../shared/utils/jwt";
-import { writeAuditLog, countRecentFailedAuthAttempts } from "../audit/audit.service";
+import {
+  signAccessToken,
+  signMfaChallengeToken,
+  verifyMfaChallengeToken,
+} from "../../shared/utils/jwt";
+import {
+  writeAuditLog,
+  countRecentFailedAuthAttempts,
+} from "../audit/audit.service";
 import * as authRepository from "./auth.repository";
-import { RegisterInput, LoginInput, VerifyMfaInput, ChangePasswordInput } from "./auth.schema";
-import { SafeUserDto, AuthenticatedSessionDto, MfaChallengeDto, MfaEnrollmentDto } from "./auth.dto";
+import {
+  RegisterInput,
+  LoginInput,
+  VerifyMfaInput,
+  ChangePasswordInput,
+  DisableMfaInput,
+} from "./auth.schema";
+import {
+  SafeUserDto,
+  AuthenticatedSessionDto,
+  MfaChallengeDto,
+  MfaEnrollmentDto,
+  BackupCodesDto,
+  ProfileDto,
+} from "./auth.dto";
+
+// Two-factor is compulsory for these roles (enforced in stage 2); they can
+// never turn it off.
+const STAFF_ROLES = ["ELECTION_OFFICER", "ELECTION_ADMINISTRATOR", "AUDITOR"];
+
+// ---------- Backup codes ----------
+// 8 codes of 8 characters, shown as "ABCD-EFGH". The alphabet leaves out
+// 0/O and 1/I so codes can be read aloud or copied by hand without mistakes.
+const BACKUP_CODE_COUNT = 8;
+const BACKUP_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+function newBackupCode(): string {
+  const bytes = crypto.randomBytes(8);
+  const chars = Array.from(
+    bytes,
+    (b) => BACKUP_ALPHABET[b % BACKUP_ALPHABET.length],
+  ).join("");
+  return `${chars.slice(0, 4)}-${chars.slice(4)}`;
+}
+
+// Users may type lower case, spaces or no dash.
+function normalizeBackupCode(code: string): string {
+  return code.toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+// Keyed hash: a copy of the database alone is not enough to test guesses.
+function hashBackupCode(code: string): string {
+  return crypto
+    .createHmac("sha256", env.ENCRYPTION_KEY)
+    .update(normalizeBackupCode(code))
+    .digest("hex");
+}
+
+async function issueBackupCodes(userId: string): Promise<string[]> {
+  const codes = Array.from({ length: BACKUP_CODE_COUNT }, newBackupCode);
+  await authRepository.replaceBackupCodes(userId, codes.map(hashBackupCode));
+  return codes;
+}
 
 // Account lockout: this many failed password or MFA attempts inside the window
 // blocks the account until the window clears. Tune here.
@@ -51,31 +109,48 @@ function readTotpSecret(stored: string): string {
 
 async function upgradeLegacySecret(user: User): Promise<void> {
   if (user.totpSecret && !isEncryptedSecret(user.totpSecret)) {
-    await authRepository.updateTotpSecret(user.id, encryptPayload(user.totpSecret));
+    await authRepository.updateTotpSecret(
+      user.id,
+      encryptPayload(user.totpSecret),
+    );
   }
 }
 
 // Blocked attempts are logged as LOGIN_BLOCKED, which the failure count ignores,
 // so an attacker who keeps trying cannot extend the lock for the real owner.
 async function assertNotLockedOut(userId: string): Promise<void> {
-  const failures = await countRecentFailedAuthAttempts(userId, new Date(Date.now() - LOCKOUT_WINDOW_MS));
+  const failures = await countRecentFailedAuthAttempts(
+    userId,
+    new Date(Date.now() - LOCKOUT_WINDOW_MS),
+  );
   if (failures >= LOCKOUT_THRESHOLD) {
     await writeAuditLog({
-      actorId: userId, action: "LOGIN_BLOCKED", outcome: "DENIED",
+      actorId: userId,
+      action: "LOGIN_BLOCKED",
+      outcome: "DENIED",
       metadata: { reason: "too_many_failures" },
     });
-    throw new AppError("Too many failed attempts. Please try again later.", 429);
+    throw new AppError(
+      "Too many failed attempts. Please try again later.",
+      429,
+    );
   }
 }
 
 async function issueSession(
   user: User,
-  ip: string | undefined
-): Promise<{ session: AuthenticatedSessionDto; rawRefreshToken: string; refreshExpiresAt: Date }> {
+  ip: string | undefined,
+): Promise<{
+  session: AuthenticatedSessionDto;
+  rawRefreshToken: string;
+  refreshExpiresAt: Date;
+}> {
   const accessToken = signAccessToken({ sub: user.id, role: user.role });
 
   const rawRefreshToken = crypto.randomBytes(64).toString("hex");
-  const refreshExpiresAt = new Date(Date.now() + parseDurationMs(env.JWT_REFRESH_EXPIRES_IN));
+  const refreshExpiresAt = new Date(
+    Date.now() + parseDurationMs(env.JWT_REFRESH_EXPIRES_IN),
+  );
 
   await authRepository.createRefreshToken({
     userId: user.id,
@@ -84,7 +159,11 @@ async function issueSession(
     createdByIp: ip,
   });
 
-  return { session: { accessToken, user: toSafeUser(user) }, rawRefreshToken, refreshExpiresAt };
+  return {
+    session: { accessToken, user: toSafeUser(user) },
+    rawRefreshToken,
+    refreshExpiresAt,
+  };
 }
 
 // One generic message for every credential failure in login(): it never reveals
@@ -93,8 +172,11 @@ const INVALID_CREDENTIALS_MESSAGE = "Invalid email or password.";
 
 export async function login(
   input: LoginInput,
-  ip: string | undefined
-): Promise<{ result: AuthenticatedSessionDto | MfaChallengeDto; rawRefreshToken?: string }> {
+  ip: string | undefined,
+): Promise<{
+  result: AuthenticatedSessionDto | MfaChallengeDto;
+  rawRefreshToken?: string;
+}> {
   const user = await authRepository.findUserByEmail(input.email);
 
   if (!user) {
@@ -108,7 +190,9 @@ export async function login(
   }
 
   if (user.status === "PENDING_ACTIVATION") {
-    throw new ForbiddenError("This account has not been activated yet. Please complete registration first.");
+    throw new ForbiddenError(
+      "This account has not been activated yet. Please complete registration first.",
+    );
   }
   if (user.status === "SUSPENDED" || user.status === "DEACTIVATED") {
     await writeAuditLog({
@@ -117,12 +201,17 @@ export async function login(
       outcome: "DENIED",
       metadata: { reason: `account_${user.status.toLowerCase()}` },
     });
-    throw new ForbiddenError("This account is not active. Contact an administrator.");
+    throw new ForbiddenError(
+      "This account is not active. Contact an administrator.",
+    );
   }
 
   await assertNotLockedOut(user.id);
 
-  const passwordMatches = await bcrypt.compare(input.password, user.passwordHash);
+  const passwordMatches = await bcrypt.compare(
+    input.password,
+    user.passwordHash,
+  );
   if (!passwordMatches) {
     await writeAuditLog({
       actorId: user.id,
@@ -134,19 +223,32 @@ export async function login(
   }
 
   if (user.mfaEnabled) {
-    await writeAuditLog({ actorId: user.id, action: "LOGIN_MFA_CHALLENGE_ISSUED", outcome: "SUCCESS" });
-    return { result: { mfaRequired: true, mfaChallengeToken: signMfaChallengeToken(user.id) } };
+    await writeAuditLog({
+      actorId: user.id,
+      action: "LOGIN_MFA_CHALLENGE_ISSUED",
+      outcome: "SUCCESS",
+    });
+    return {
+      result: {
+        mfaRequired: true,
+        mfaChallengeToken: signMfaChallengeToken(user.id),
+      },
+    };
   }
 
   const { session, rawRefreshToken } = await issueSession(user, ip);
-  await writeAuditLog({ actorId: user.id, action: "LOGIN_SUCCESS", outcome: "SUCCESS" });
+  await writeAuditLog({
+    actorId: user.id,
+    action: "LOGIN_SUCCESS",
+    outcome: "SUCCESS",
+  });
 
   return { result: session, rawRefreshToken };
 }
 
 export async function verifyMfa(
   input: VerifyMfaInput,
-  ip: string | undefined
+  ip: string | undefined,
 ): Promise<{ session: AuthenticatedSessionDto; rawRefreshToken: string }> {
   const userId = verifyMfaChallengeToken(input.mfaChallengeToken);
   const user = await authRepository.findUserById(userId);
@@ -161,9 +263,46 @@ export async function verifyMfa(
 
   await assertNotLockedOut(user.id);
 
+  // Lost phone: a one-time backup code instead of the app code.
+  if (input.backupCode) {
+    const spent = await authRepository.spendBackupCode(
+      user.id,
+      hashBackupCode(input.backupCode),
+    );
+    if (!spent) {
+      await writeAuditLog({
+        actorId: user.id,
+        action: "MFA_VERIFICATION_FAILED",
+        outcome: "DENIED",
+        metadata: { reason: "invalid_backup_code" },
+      });
+      throw new AuthError(
+        "That backup code is not valid or has already been used.",
+      );
+    }
+    const remaining = await authRepository.countUnusedBackupCodes(user.id);
+    await writeAuditLog({
+      actorId: user.id,
+      action: "MFA_BACKUP_CODE_USED",
+      outcome: "SUCCESS",
+      metadata: { remaining },
+    });
+    const { session, rawRefreshToken } = await issueSession(user, ip);
+    await writeAuditLog({
+      actorId: user.id,
+      action: "LOGIN_SUCCESS",
+      outcome: "SUCCESS",
+      metadata: { mfaUsed: true, backupCode: true },
+    });
+    return { session, rawRefreshToken };
+  }
+
   // checkDelta reports WHICH time-step matched, which is what makes per-step
   // replay protection possible below.
-  const delta = authenticator.checkDelta(input.totpCode, readTotpSecret(user.totpSecret));
+  const delta = authenticator.checkDelta(
+    input.totpCode!,
+    readTotpSecret(user.totpSecret),
+  );
 
   if (delta === null) {
     await writeAuditLog({
@@ -185,14 +324,21 @@ export async function verifyMfa(
       outcome: "DENIED",
       metadata: { reason: "replayed_code" },
     });
-    throw new AuthError("This code has already been used. Please wait for a new one.");
+    throw new AuthError(
+      "This code has already been used. Please wait for a new one.",
+    );
   }
 
   await authRepository.updateLastUsedTimeStep(user.id, acceptedStep);
   await upgradeLegacySecret(user);
 
   const { session, rawRefreshToken } = await issueSession(user, ip);
-  await writeAuditLog({ actorId: user.id, action: "LOGIN_SUCCESS", outcome: "SUCCESS", metadata: { mfaUsed: true } });
+  await writeAuditLog({
+    actorId: user.id,
+    action: "LOGIN_SUCCESS",
+    outcome: "SUCCESS",
+    metadata: { mfaUsed: true },
+  });
 
   return { session, rawRefreshToken };
 }
@@ -204,7 +350,9 @@ export async function register(input: RegisterInput): Promise<SafeUserDto> {
   const REGISTRATION_FAILURE_MESSAGE =
     "Unable to verify your membership details. Please check your membership number and full name, or contact your SACCO administrator.";
 
-  const pendingUser = await authRepository.findUserByMembershipNumber(input.membershipNumber);
+  const pendingUser = await authRepository.findUserByMembershipNumber(
+    input.membershipNumber,
+  );
 
   // Same generic message whether the number doesn't exist, is already claimed,
   // or the name doesn't match, so valid numbers can't be enumerated.
@@ -213,7 +361,10 @@ export async function register(input: RegisterInput): Promise<SafeUserDto> {
       actorId: null,
       action: "REGISTRATION_FAILED",
       outcome: "DENIED",
-      metadata: { membershipNumber: input.membershipNumber, reason: "not_pending" },
+      metadata: {
+        membershipNumber: input.membershipNumber,
+        reason: "not_pending",
+      },
     });
     throw new ConflictError(REGISTRATION_FAILURE_MESSAGE);
   }
@@ -225,12 +376,16 @@ export async function register(input: RegisterInput): Promise<SafeUserDto> {
       outcome: "DENIED",
       metadata: { reason: "membership_not_active" },
     });
-    throw new ForbiddenError("This membership is not currently active. Contact your SACCO administrator.");
+    throw new ForbiddenError(
+      "This membership is not currently active. Contact your SACCO administrator.",
+    );
   }
 
   // The full-name match is a lightweight second factor proving the registrant is
   // the member the sync record describes, not just someone holding the number.
-  const nameMatches = pendingUser.fullName.trim().toLowerCase() === input.fullName.trim().toLowerCase();
+  const nameMatches =
+    pendingUser.fullName.trim().toLowerCase() ===
+    input.fullName.trim().toLowerCase();
   if (!nameMatches) {
     await writeAuditLog({
       actorId: pendingUser.id,
@@ -243,7 +398,9 @@ export async function register(input: RegisterInput): Promise<SafeUserDto> {
 
   const existingEmailUser = await authRepository.findUserByEmail(input.email);
   if (existingEmailUser && existingEmailUser.id !== pendingUser.id) {
-    throw new ValidationError([{ field: "email", message: "This email address is already in use." }]);
+    throw new ValidationError([
+      { field: "email", message: "This email address is already in use." },
+    ]);
   }
 
   const passwordHash = await bcrypt.hash(input.password, 12);
@@ -254,16 +411,22 @@ export async function register(input: RegisterInput): Promise<SafeUserDto> {
     fullName: input.fullName,
   });
 
-  await writeAuditLog({ actorId: activated.id, action: "REGISTRATION_COMPLETED", outcome: "SUCCESS" });
+  await writeAuditLog({
+    actorId: activated.id,
+    action: "REGISTRATION_COMPLETED",
+    outcome: "SUCCESS",
+  });
 
   return toSafeUser(activated);
 }
 
 export async function refresh(
   rawRefreshToken: string,
-  ip: string | undefined
+  ip: string | undefined,
 ): Promise<{ accessToken: string; newRawRefreshToken: string }> {
-  const existing = await authRepository.findRefreshTokenByHash(hashToken(rawRefreshToken));
+  const existing = await authRepository.findRefreshTokenByHash(
+    hashToken(rawRefreshToken),
+  );
 
   if (!existing) {
     throw new AuthError("Invalid session. Please log in again.");
@@ -280,7 +443,9 @@ export async function refresh(
       outcome: "DENIED",
       metadata: { ip },
     });
-    throw new AuthError("Session invalidated for security reasons. Please log in again.");
+    throw new AuthError(
+      "Session invalidated for security reasons. Please log in again.",
+    );
   }
 
   if (existing.expiresAt < new Date()) {
@@ -293,7 +458,9 @@ export async function refresh(
   }
 
   const newRawRefreshToken = crypto.randomBytes(64).toString("hex");
-  const refreshExpiresAt = new Date(Date.now() + parseDurationMs(env.JWT_REFRESH_EXPIRES_IN));
+  const refreshExpiresAt = new Date(
+    Date.now() + parseDurationMs(env.JWT_REFRESH_EXPIRES_IN),
+  );
 
   await authRepository.rotateRefreshToken(existing.id, {
     userId: user.id,
@@ -303,18 +470,31 @@ export async function refresh(
   });
 
   const accessToken = signAccessToken({ sub: user.id, role: user.role });
-  await writeAuditLog({ actorId: user.id, action: "TOKEN_REFRESHED", outcome: "SUCCESS" });
+  await writeAuditLog({
+    actorId: user.id,
+    action: "TOKEN_REFRESHED",
+    outcome: "SUCCESS",
+  });
 
   return { accessToken, newRawRefreshToken };
 }
 
-export async function logout(rawRefreshToken: string | undefined, userId: string | undefined): Promise<void> {
+export async function logout(
+  rawRefreshToken: string | undefined,
+  userId: string | undefined,
+): Promise<void> {
   if (!rawRefreshToken) return;
 
-  const existing = await authRepository.findRefreshTokenByHash(hashToken(rawRefreshToken));
+  const existing = await authRepository.findRefreshTokenByHash(
+    hashToken(rawRefreshToken),
+  );
   if (existing && !existing.revoked) {
     await authRepository.revokeRefreshToken(existing.id);
-    await writeAuditLog({ actorId: userId ?? existing.userId, action: "LOGOUT", outcome: "SUCCESS" });
+    await writeAuditLog({
+      actorId: userId ?? existing.userId,
+      action: "LOGOUT",
+      outcome: "SUCCESS",
+    });
   }
 }
 
@@ -326,14 +506,20 @@ export async function enrollMfa(userId: string): Promise<MfaEnrollmentDto> {
   // authenticator secret on an account that already has MFA and lock the owner out.
   if (user.mfaEnabled) {
     await writeAuditLog({
-      actorId: userId, action: "MFA_ENROLL_REFUSED", outcome: "DENIED",
+      actorId: userId,
+      action: "MFA_ENROLL_REFUSED",
+      outcome: "DENIED",
       metadata: { reason: "already_enabled" },
     });
     throw new ConflictError("MFA is already enabled on this account.");
   }
 
   const totpSecret = authenticator.generateSecret();
-  const otpauthUri = authenticator.keyuri(user.email, env.TOTP_ISSUER, totpSecret);
+  const otpauthUri = authenticator.keyuri(
+    user.email,
+    env.TOTP_ISSUER,
+    totpSecret,
+  );
   const qrCodeDataUrl = await QRCode.toDataURL(otpauthUri);
 
   // The secret is stored encrypted and mfaEnabled stays false until
@@ -343,28 +529,145 @@ export async function enrollMfa(userId: string): Promise<MfaEnrollmentDto> {
   return { totpSecret, qrCodeDataUrl, issuer: env.TOTP_ISSUER };
 }
 
-export async function confirmMfaEnrollment(userId: string, totpCode: string): Promise<void> {
+export async function confirmMfaEnrollment(
+  userId: string,
+  totpCode: string,
+): Promise<BackupCodesDto> {
   const user = await authRepository.findUserById(userId);
   if (!user || !user.totpSecret) {
-    throw new ValidationError([{ message: "No MFA enrollment in progress for this account." }]);
+    throw new ValidationError([
+      { message: "No MFA enrollment in progress for this account." },
+    ]);
   }
 
-  const isValid = authenticator.check(totpCode, readTotpSecret(user.totpSecret));
+  const isValid = authenticator.check(
+    totpCode,
+    readTotpSecret(user.totpSecret),
+  );
   if (!isValid) {
-    throw new ValidationError([{ field: "totpCode", message: "Invalid authentication code." }]);
+    throw new ValidationError([
+      { field: "totpCode", message: "Invalid authentication code." },
+    ]);
   }
 
   await authRepository.confirmMfa(userId);
-  await writeAuditLog({ actorId: userId, action: "MFA_ENABLED", outcome: "SUCCESS" });
+  const backupCodes = await issueBackupCodes(userId);
+  await writeAuditLog({
+    actorId: userId,
+    action: "MFA_ENABLED",
+    outcome: "SUCCESS",
+  });
+  return { backupCodes };
 }
 
-export async function changePassword(userId: string, input: ChangePasswordInput): Promise<void> {
+// Throws unless the code is right for this user's authenticator.
+async function assertCurrentTotp(
+  userId: string,
+  totpCode: string,
+  purpose: string,
+): Promise<void> {
+  const user = await authRepository.findUserById(userId);
+  if (!user || !user.mfaEnabled || !user.totpSecret) {
+    throw new ConflictError(
+      "Two-factor sign-in is not turned on for this account.",
+    );
+  }
+  if (!authenticator.check(totpCode, readTotpSecret(user.totpSecret))) {
+    await writeAuditLog({
+      actorId: userId,
+      action: "MFA_VERIFICATION_FAILED",
+      outcome: "DENIED",
+      metadata: { reason: "invalid_code", purpose },
+    });
+    throw new ValidationError([
+      {
+        field: "totpCode",
+        message: "That code is not right. Check the app and try again.",
+      },
+    ]);
+  }
+}
+
+// New set of backup codes; the old ones stop working.
+export async function regenerateBackupCodes(
+  userId: string,
+  totpCode: string,
+): Promise<BackupCodesDto> {
+  await assertNotLockedOut(userId);
+  await assertCurrentTotp(userId, totpCode, "regenerate_backup_codes");
+  const backupCodes = await issueBackupCodes(userId);
+  await writeAuditLog({
+    actorId: userId,
+    action: "MFA_BACKUP_CODES_REGENERATED",
+    outcome: "SUCCESS",
+  });
+  return { backupCodes };
+}
+
+// Members may turn two-factor off again; staff may not.
+export async function disableMfa(
+  userId: string,
+  input: DisableMfaInput,
+): Promise<void> {
+  const user = await authRepository.findUserById(userId);
+  if (!user) throw new AuthError("User not found.");
+  if (STAFF_ROLES.includes(user.role)) {
+    throw new ForbiddenError(
+      "Two-factor sign-in is required for your role and cannot be turned off.",
+    );
+  }
+  await assertNotLockedOut(userId);
+  if (!(await bcrypt.compare(input.password, user.passwordHash))) {
+    await writeAuditLog({
+      actorId: userId,
+      action: "MFA_DISABLE_FAILED",
+      outcome: "DENIED",
+      metadata: { reason: "bad_password" },
+    });
+    throw new ValidationError([
+      { field: "password", message: "That password is not right." },
+    ]);
+  }
+  await assertCurrentTotp(userId, input.totpCode, "disable_mfa");
+  await authRepository.disableMfa(userId);
+  await writeAuditLog({
+    actorId: userId,
+    action: "MFA_DISABLED",
+    outcome: "SUCCESS",
+  });
+}
+
+export async function getProfile(userId: string): Promise<ProfileDto> {
+  const user = await authRepository.findUserById(userId);
+  if (!user) throw new AuthError("User not found.");
+  return {
+    ...toSafeUser(user),
+    phoneNumber: user.phoneNumber,
+    branch: user.branch,
+    membershipStatus: user.membershipStatus,
+    memberSince: user.createdAt,
+    backupCodesRemaining: user.mfaEnabled
+      ? await authRepository.countUnusedBackupCodes(userId)
+      : null,
+    mfaRequired: STAFF_ROLES.includes(user.role),
+  };
+}
+
+export async function changePassword(
+  userId: string,
+  input: ChangePasswordInput,
+): Promise<void> {
   const user = await authRepository.findUserById(userId);
   if (!user) throw new AuthError("User not found.");
 
-  const currentMatches = await bcrypt.compare(input.currentPassword, user.passwordHash);
+  const currentMatches = await bcrypt.compare(
+    input.currentPassword,
+    user.passwordHash,
+  );
   if (!currentMatches) {
-    throw new ValidationError([{ field: "currentPassword", message: "Current password is incorrect." }]);
+    throw new ValidationError([
+      { field: "currentPassword", message: "Current password is incorrect." },
+    ]);
   }
 
   const newHash = await bcrypt.hash(input.newPassword, 12);
@@ -373,5 +676,9 @@ export async function changePassword(userId: string, input: ChangePasswordInput)
   // Ends every session, so a stolen session cannot outlive the password change.
   await authRepository.revokeAllUserTokens(userId);
 
-  await writeAuditLog({ actorId: userId, action: "PASSWORD_CHANGED", outcome: "SUCCESS" });
+  await writeAuditLog({
+    actorId: userId,
+    action: "PASSWORD_CHANGED",
+    outcome: "SUCCESS",
+  });
 }

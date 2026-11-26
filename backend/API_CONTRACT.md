@@ -78,13 +78,24 @@ Only one refresh should run at a time: queue other requests that get a 401 until
 |---|---|---|---|
 | `POST /auth/register` | Public | `{ membershipNumber, fullName, email, password, confirmPassword }` | `User` (201) |
 | `POST /auth/login` | Public | `{ email, password }` | `{ accessToken, user: User }` **or** `{ mfaRequired: true, mfaChallengeToken }` |
-| `POST /auth/verify-mfa` | Public | `{ mfaChallengeToken, totpCode }` (6 digits) | `{ accessToken, user: User }` |
+| `POST /auth/verify-mfa` | Public | `{ mfaChallengeToken, totpCode }` (6 digits) **or** `{ mfaChallengeToken, backupCode }` ("ABCD-EFGH"; any case, dash optional). Exactly one of the two. | `{ accessToken, user: User }`. A wrong or already-used backup code gives 401 "That backup code is not valid or has already been used." |
 | `POST /auth/refresh` | Cookie | `{}` | `{ accessToken }` |
 | `POST /auth/logout` | Logged in | — | `null` (clears the cookie) |
 | `GET /auth/me` | Logged in | — | `{ id, role }` |
 | `POST /auth/mfa/enroll` | Logged in | — | `{ totpSecret, qrCodeDataUrl, issuer }`. Show the QR image (`<img src={qrCodeDataUrl}>`). 409 if MFA is already on. |
-| `POST /auth/mfa/confirm` | Logged in | `{ totpCode }` | `null` (MFA now on) |
-| `PATCH /auth/me/password` | Logged in | `{ currentPassword, newPassword, confirmNewPassword }` | `null`. Logs out other devices. |
+| `POST /auth/mfa/confirm` | Logged in | `{ totpCode }` | `{ backupCodes: string[8] }` (MFA now on). **The only time these codes are returned.** Show them and make the user confirm they saved them. |
+| `POST /auth/mfa/backup-codes` | Logged in, MFA on | `{ totpCode }` | `{ backupCodes: string[8] }`. The old codes stop working. 422 (`totpCode`) for a wrong code; 409 if MFA is off. |
+| `POST /auth/mfa/disable` | Logged in, MFA on, **members only** | `{ password, totpCode }` | `null`. Clears the secret and deletes the backup codes. 403 for officers, administrators and auditors ("required for your role"); 422 on `password` or `totpCode` if wrong. |
+| `GET /auth/profile` | Logged in | — | `Profile` (below) |
+| `PATCH /auth/me/password` | Logged in | `{ currentPassword, newPassword, confirmNewPassword }` | `null`. Revokes **every** refresh token, including this device's, so no session can be renewed: send the user to the login page. |
+
+**`Profile`** = `User` plus
+`{ phoneNumber: string|null, branch: string|null, membershipStatus: "ACTIVE"|"INACTIVE"|"SUSPENDED"|"EXITED"|null, memberSince: ISO date, backupCodesRemaining: number|null (null when MFA is off), mfaRequired: boolean (true for staff) }`.
+
+**Two-factor sign-in**
+* Optional for members; required for officers, administrators and auditors (`mfaRequired: true`). Staff cannot turn it off. Forcing staff to set it up at login comes in the next stage.
+* 8 backup codes per user, each usable once. Only a keyed hash (HMAC-SHA256) is stored; the plain codes cannot be fetched again.
+* Audit actions: `MFA_ENABLED`, `MFA_BACKUP_CODE_USED { remaining }`, `MFA_BACKUP_CODES_REGENERATED`, `MFA_DISABLED`, `MFA_DISABLE_FAILED`, `MFA_VERIFICATION_FAILED { reason }`. `LOGIN_SUCCESS` carries `backupCode: true` when a backup code was used.
 
 **Rules the frontend must mirror in its forms**
 * Password: at least 8 characters, with at least one uppercase letter, one lowercase letter and one number.
@@ -352,5 +363,5 @@ Ties go to the earliest-registered candidate. Group by `positionName` for displa
 | Candidate photo / supporting-document upload | No file storage yet. Nominations are text only. |
 | Forgot password | Not available. Hide the link or replace it with "Contact your SACCO office". |
 | Audit log actor name, role, IP address, device, risk level | `AuditLogEntry` has `actorId` only. Look up names via `GET /users` (administrators), or add fields to the backend later. |
-| `branch` and phone number on the profile | Not in `User` yet; needs a small backend addition. |
+| `branch` and phone number on the profile | **Done:** `GET /auth/profile`. Read-only; they come from membership sync. |
 | Approval types `CANDIDATE_APPROVAL`, `ELECTION_CLOSURE` | Not DAT actions: candidate approval and closing are direct officer actions. |

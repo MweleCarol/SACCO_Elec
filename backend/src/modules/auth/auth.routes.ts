@@ -4,7 +4,14 @@ import { authLimiter } from "../../shared/middleware/rateLimiter";
 import { validate } from "../../shared/middleware/validate";
 import * as controller from "./auth.controller";
 import {
-  registerSchema, loginSchema, verifyMfaSchema, refreshSchema, mfaConfirmSchema, changePasswordSchema,
+  registerSchema,
+  loginSchema,
+  verifyMfaSchema,
+  refreshSchema,
+  mfaConfirmSchema,
+  changePasswordSchema,
+  disableMfaSchema,
+  regenerateBackupCodesSchema,
 } from "./auth.schema";
 
 const router = Router();
@@ -13,9 +20,24 @@ const router = Router();
 // app-wide) sits in front of every endpoint that checks something a person
 // could guess: a password, an MFA code, membership details — task spec §25's
 // "rate limiting for sensitive endpoints" requirement.
-router.post("/register", authLimiter, validate({ body: registerSchema }), controller.register);
-router.post("/login", authLimiter, validate({ body: loginSchema }), controller.login);
-router.post("/verify-mfa", authLimiter, validate({ body: verifyMfaSchema }), controller.verifyMfa);
+router.post(
+  "/register",
+  authLimiter,
+  validate({ body: registerSchema }),
+  controller.register,
+);
+router.post(
+  "/login",
+  authLimiter,
+  validate({ body: loginSchema }),
+  controller.login,
+);
+router.post(
+  "/verify-mfa",
+  authLimiter,
+  validate({ body: verifyMfaSchema }),
+  controller.verifyMfa,
+);
 
 // /refresh is deliberately NOT behind authLimiter. The frontend calls it on
 // every page load to restore a session, so a logged-out visitor's call fails
@@ -28,7 +50,33 @@ router.post("/refresh", validate({ body: refreshSchema }), controller.refresh);
 router.post("/logout", authenticate, controller.logout);
 router.get("/me", authenticate, controller.me);
 router.post("/mfa/enroll", authenticate, controller.enrollMfa);
-router.post("/mfa/confirm", authenticate, validate({ body: mfaConfirmSchema }), controller.confirmMfa);
-router.patch("/me/password", authenticate, validate({ body: changePasswordSchema }), controller.changePassword);
+router.post(
+  "/mfa/confirm",
+  authenticate,
+  validate({ body: mfaConfirmSchema }),
+  controller.confirmMfa,
+);
+// Sensitive: both need a current app code, so they share the login limiter.
+router.post(
+  "/mfa/backup-codes",
+  authenticate,
+  authLimiter,
+  validate({ body: regenerateBackupCodesSchema }),
+  controller.regenerateBackupCodes,
+);
+router.post(
+  "/mfa/disable",
+  authenticate,
+  authLimiter,
+  validate({ body: disableMfaSchema }),
+  controller.disableMfa,
+);
+router.get("/profile", authenticate, controller.profile);
+router.patch(
+  "/me/password",
+  authenticate,
+  validate({ body: changePasswordSchema }),
+  controller.changePassword,
+);
 
 export default router;

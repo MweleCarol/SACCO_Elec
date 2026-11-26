@@ -119,3 +119,39 @@ export function revokeAllUserTokens(userId: string): Promise<{ count: number }> 
 export function updateTotpSecret(userId: string, totpSecret: string): Promise<User> {
   return prisma.user.update({ where: { id: userId }, data: { totpSecret } });
 }
+
+
+// ---------- Two-factor backup codes ----------
+
+// Replaces every backup code for the user in one transaction.
+export function replaceBackupCodes(userId: string, codeHashes: string[]) {
+  return prisma.$transaction([
+    prisma.mfaBackupCode.deleteMany({ where: { userId } }),
+    prisma.mfaBackupCode.createMany({ data: codeHashes.map((codeHash) => ({ userId, codeHash })) }),
+  ]);
+}
+
+// Spends a code atomically: only an unused, matching code is marked used, so
+// two simultaneous logins with the same code cannot both succeed.
+export async function spendBackupCode(userId: string, codeHash: string): Promise<boolean> {
+  const result = await prisma.mfaBackupCode.updateMany({
+    where: { userId, codeHash, usedAt: null },
+    data: { usedAt: new Date() },
+  });
+  return result.count === 1;
+}
+
+export function countUnusedBackupCodes(userId: string): Promise<number> {
+  return prisma.mfaBackupCode.count({ where: { userId, usedAt: null } });
+}
+
+// Turns two-factor off: clears the secret and deletes every backup code.
+export function disableMfa(userId: string) {
+  return prisma.$transaction([
+    prisma.mfaBackupCode.deleteMany({ where: { userId } }),
+    prisma.user.update({
+      where: { id: userId },
+      data: { mfaEnabled: false, totpSecret: null, lastUsedTimeStep: null },
+    }),
+  ]);
+}

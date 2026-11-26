@@ -1,7 +1,14 @@
 import { Request, Response } from "express";
 import { sendSuccess } from "../../shared/responses/ApiResponse";
 import * as authService from "./auth.service";
-import { RegisterInput, LoginInput, VerifyMfaInput, MfaConfirmInput, ChangePasswordInput } from "./auth.schema";
+import {
+  RegisterInput,
+  LoginInput,
+  VerifyMfaInput,
+  MfaConfirmInput,
+  ChangePasswordInput,
+  DisableMfaInput,
+} from "./auth.schema";
 import { env, isProduction } from "../../config/env";
 import { AuthError } from "../../shared/errors/AuthError";
 import { parseDurationMs } from "../../shared/utils/duration";
@@ -49,7 +56,10 @@ export async function login(req: Request, res: Response): Promise<void> {
 
 export async function verifyMfa(req: Request, res: Response): Promise<void> {
   const body = res.locals.validated?.body as VerifyMfaInput;
-  const { session, rawRefreshToken } = await authService.verifyMfa(body, req.ip);
+  const { session, rawRefreshToken } = await authService.verifyMfa(
+    body,
+    req.ip,
+  );
 
   setRefreshCookie(res, rawRefreshToken);
 
@@ -62,7 +72,10 @@ export async function refresh(req: Request, res: Response): Promise<void> {
     throw new AuthError("No active session found.");
   }
 
-  const { accessToken, newRawRefreshToken } = await authService.refresh(rawRefreshToken, req.ip);
+  const { accessToken, newRawRefreshToken } = await authService.refresh(
+    rawRefreshToken,
+    req.ip,
+  );
 
   setRefreshCookie(res, newRawRefreshToken);
 
@@ -82,17 +95,63 @@ export async function me(req: Request, res: Response): Promise<void> {
 
 export async function enrollMfa(req: Request, res: Response): Promise<void> {
   const result = await authService.enrollMfa(req.user!.id);
-  sendSuccess(res, result, "Scan this QR code with your authenticator app, then confirm with a code.");
+  sendSuccess(
+    res,
+    result,
+    "Scan this QR code with your authenticator app, then confirm with a code.",
+  );
 }
 
 export async function confirmMfa(req: Request, res: Response): Promise<void> {
   const body = res.locals.validated?.body as MfaConfirmInput;
-  await authService.confirmMfaEnrollment(req.user!.id, body.totpCode);
-  sendSuccess(res, null, "MFA enabled successfully.");
+  // The backup codes are in this response only; they are never shown again.
+  const result = await authService.confirmMfaEnrollment(
+    req.user!.id,
+    body.totpCode,
+  );
+  sendSuccess(
+    res,
+    result,
+    "Two-factor sign-in is on. Save your backup codes now.",
+  );
 }
 
-export async function changePassword(req: Request, res: Response): Promise<void> {
+export async function regenerateBackupCodes(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const body = res.locals.validated?.body as MfaConfirmInput;
+  const result = await authService.regenerateBackupCodes(
+    req.user!.id,
+    body.totpCode,
+  );
+  sendSuccess(
+    res,
+    result,
+    "New backup codes created. The old ones no longer work.",
+  );
+}
+
+export async function disableMfa(req: Request, res: Response): Promise<void> {
+  const body = res.locals.validated?.body as DisableMfaInput;
+  await authService.disableMfa(req.user!.id, body);
+  sendSuccess(res, null, "Two-factor sign-in is off.");
+}
+
+export async function profile(req: Request, res: Response): Promise<void> {
+  const result = await authService.getProfile(req.user!.id);
+  sendSuccess(res, result, "Your profile.");
+}
+
+export async function changePassword(
+  req: Request,
+  res: Response,
+): Promise<void> {
   const body = res.locals.validated?.body as ChangePasswordInput;
   await authService.changePassword(req.user!.id, body);
-  sendSuccess(res, null, "Password changed. Please log in again on other devices.");
+  sendSuccess(
+    res,
+    null,
+    "Password changed. Please log in again on other devices.",
+  );
 }

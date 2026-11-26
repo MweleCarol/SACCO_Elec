@@ -10,7 +10,7 @@ if (process.env.DATABASE_URL !== process.env.DATABASE_TEST_URL) {
 const ALL_TABLES = [
   "AIInsight", "Notification", "AuditLog", "Result", "ApprovalDecision",
   "ApprovalRequest", "Vote", "Participation", "Candidate", "Position",
-  "Election", "RefreshToken", "User",
+  "Election", "RefreshToken","MfaBackupCode", "User",
 ];
 
 export async function resetTestDatabase(): Promise<void> {

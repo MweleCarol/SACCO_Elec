@@ -8,9 +8,19 @@ import { z } from "zod";
 // not here.
 export const registerSchema = z
   .object({
-    membershipNumber: z.string().trim().min(1, "Membership number is required."),
-    email: z.string().trim().toLowerCase().email("Enter a valid email address."),
-    fullName: z.string().trim().min(2, "Full name must be at least 2 characters."),
+    membershipNumber: z
+      .string()
+      .trim()
+      .min(1, "Membership number is required."),
+    email: z
+      .string()
+      .trim()
+      .toLowerCase()
+      .email("Enter a valid email address."),
+    fullName: z
+      .string()
+      .trim()
+      .min(2, "Full name must be at least 2 characters."),
     password: z
       .string()
       .min(8, "Password must be at least 8 characters.")
@@ -33,14 +43,29 @@ export const loginSchema = z.object({
 
 export type LoginInput = z.infer<typeof loginSchema>;
 
-export const verifyMfaSchema = z.object({
-  mfaChallengeToken: z.string().min(1, "MFA challenge token is required."),
-  totpCode: z
-    .string()
-    .trim()
-    .regex(/^\d{6}$/, "Enter the 6-digit code from your authenticator app."),
-});
-
+// The second sign-in step takes EITHER the 6-digit app code OR a one-time
+// backup code (for a lost phone), never both.
+export const verifyMfaSchema = z
+  .object({
+    mfaChallengeToken: z.string().min(1, "MFA challenge token is required."),
+    totpCode: z
+      .string()
+      .trim()
+      .regex(/^\d{6}$/, "Enter the 6-digit code from your authenticator app.")
+      .optional(),
+    backupCode: z
+      .string()
+      .trim()
+      .regex(
+        /^[A-Za-z0-9]{4}[- ]?[A-Za-z0-9]{4}$/,
+        "Enter a backup code like ABCD-EFGH.",
+      )
+      .optional(),
+  })
+  .refine((d) => (d.totpCode ? 1 : 0) + (d.backupCode ? 1 : 0) === 1, {
+    message: "Enter the 6-digit code from your app, or one backup code.",
+    path: ["totpCode"],
+  });
 export type VerifyMfaInput = z.infer<typeof verifyMfaSchema>;
 
 // No body needed — the CLI/frontend sends the refresh token via the
@@ -76,3 +101,23 @@ export const changePasswordSchema = z
   });
 
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
+
+// Turning two-factor off needs the password AND a current code, so a stolen
+// session alone cannot remove it.
+export const disableMfaSchema = z.object({
+  password: z.string().min(1, "Enter your password."),
+  totpCode: z
+    .string()
+    .trim()
+    .regex(/^\d{6}$/, "Enter the 6-digit code from your authenticator app."),
+});
+
+export type DisableMfaInput = z.infer<typeof disableMfaSchema>;
+
+// New backup codes replace the old ones; needs a current app code.
+export const regenerateBackupCodesSchema = z.object({
+  totpCode: z
+    .string()
+    .trim()
+    .regex(/^\d{6}$/, "Enter the 6-digit code from your authenticator app."),
+});
