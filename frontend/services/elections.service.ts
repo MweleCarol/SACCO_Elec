@@ -1,5 +1,5 @@
 import { api } from "@/services/api/axios";
-import type { ApiSuccess, Candidate, CandidateStatus, Election, ElectionList, ElectionStatus, Position } from "@/types/api";
+import type { ApiSuccess, ApprovalRequest, Candidate, CandidateStatus, Election, ElectionList, ElectionStatus, Position } from "@/types/api";
 
 // Elections, positions and candidates (API_CONTRACT.md section 5).
 // Members automatically get only what they may see; the backend filters.
@@ -75,5 +75,21 @@ export async function submitForReview(electionId: string): Promise<Election> {
 
 export async function reviewElection(electionId: string, decision: "APPROVE" | "REJECT", comment?: string): Promise<Election> {
   const res = await api.post<ApiSuccess<Election>>(`/elections/${electionId}/review-approval`, { decision, comment });
+  return res.data.data;
+}
+
+
+export async function updateElection(
+  electionId: string,
+  input: Partial<{ name: string; description: string; startDate: string; endDate: string; requiredApprovals: number }>
+): Promise<Election> {
+  const res = await api.patch<ApiSuccess<Election>>(`/elections/${electionId}`, input);
+  return res.data.data;
+}
+
+// Creates (or returns the existing) approval request; the election only opens
+// once enough other officers or administrators approve it.
+export async function requestActivation(electionId: string): Promise<ApprovalRequest> {
+  const res = await api.post<ApiSuccess<ApprovalRequest>>(`/elections/${electionId}/activate`, {});
   return res.data.data;
 }

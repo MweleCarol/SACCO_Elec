@@ -16,7 +16,10 @@ export function usePendingApprovals(enabled = true) {
       const byElection = new Map<string, ApprovalRequest[]>();
       for (const r of data.requests) {
         if (!r.electionId) continue;
-        byElection.set(r.electionId, [...(byElection.get(r.electionId) ?? []), r]);
+        byElection.set(r.electionId, [
+          ...(byElection.get(r.electionId) ?? []),
+          r,
+        ]);
       }
       return byElection;
     },
@@ -30,7 +33,11 @@ export function usePendingApprovals(enabled = true) {
 export function useCreateElection() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (input: electionsService.NewElectionInput & { positions: { name: string; description?: string }[] }) => {
+    mutationFn: async (
+      input: electionsService.NewElectionInput & {
+        positions: { name: string; description?: string }[];
+      },
+    ) => {
       const { positions, ...electionInput } = input;
       const election = await electionsService.createElection(electionInput);
       const failedPositions: string[] = [];
@@ -43,7 +50,8 @@ export function useCreateElection() {
       }
       return { election, failedPositions };
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.elections }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.elections }),
   });
 }
 
@@ -53,7 +61,9 @@ function useRefreshElection(electionId: string) {
   const queryClient = useQueryClient();
   return () =>
     Promise.all([
-      queryClient.invalidateQueries({ queryKey: queryKeys.election(electionId) }),
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.election(electionId),
+      }),
       queryClient.invalidateQueries({ queryKey: queryKeys.elections }),
       queryClient.invalidateQueries({ queryKey: ["positions", electionId] }),
       queryClient.invalidateQueries({ queryKey: ["candidates", electionId] }),
@@ -66,18 +76,54 @@ export function useElectionActions(electionId: string) {
   const opts = { onSuccess: refresh };
   return {
     addPosition: useMutation({
-      mutationFn: (input: { name: string; description?: string; order: number }) =>
-        electionsService.createPosition(electionId, input),
+      mutationFn: (input: {
+        name: string;
+        description?: string;
+        order: number;
+      }) => electionsService.createPosition(electionId, input),
       ...opts,
     }),
-    deletePosition: useMutation({ mutationFn: electionsService.deletePosition, ...opts }),
-    
+    deletePosition: useMutation({
+      mutationFn: electionsService.deletePosition,
+      ...opts,
+    }),
+
     decideCandidate: useMutation({
-      mutationFn: (v: { candidateId: string; decision: "APPROVE" | "REJECT"; comment?: string }) =>
+      mutationFn: (v: {
+        candidateId: string;
+        decision: "APPROVE" | "REJECT";
+        comment?: string;
+      }) =>
         electionsService.decideCandidate(v.candidateId, v.decision, v.comment),
       ...opts,
     }),
-    submitForReview: useMutation({ mutationFn: () => electionsService.submitForReview(electionId), ...opts }),
+    submitForReview: useMutation({
+      mutationFn: () => electionsService.submitForReview(electionId),
+      ...opts,
+    }),
+    updateDetails: useMutation({
+      mutationFn: (
+        input: Parameters<typeof electionsService.updateElection>[1],
+      ) => electionsService.updateElection(electionId, input),
+      ...opts,
+    }),
+    requestActivation: useMutation({
+      mutationFn: () => electionsService.requestActivation(electionId),
+      ...opts,
+    }),
+    decideRequest: useMutation({
+      mutationFn: (v: {
+        requestId: string;
+        decision: "APPROVE" | "REJECT";
+        comment?: string;
+      }) =>
+        approvalsService.decideApprovalRequest(
+          v.requestId,
+          v.decision,
+          v.comment,
+        ),
+      ...opts,
+    }),
     review: useMutation({
       mutationFn: (v: { decision: "APPROVE" | "REJECT"; comment?: string }) =>
         electionsService.reviewElection(electionId, v.decision, v.comment),

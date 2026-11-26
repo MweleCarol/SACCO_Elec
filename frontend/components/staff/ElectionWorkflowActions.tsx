@@ -75,7 +75,7 @@ export function ElectionWorkflowActions({
           Submit for admin review
         </button>
         {dialog === "submit" && (
-                    <ConfirmDialog
+          <ConfirmDialog
             title="Submit for admin review?"
             message="An administrator will check the election. Positions cannot be changed after this. Once it is approved, members can apply as candidates."
             confirmLabel="Submit"

@@ -13,5 +13,5 @@ export default function ElectionDetailPage() {
   const { member, isLoading } = useCurrentMember();
   if (isLoading || !member) return null; // AppShell handles loading and redirects
   if (member.role === "MEMBER") return <MemberElectionDetail id={id} />;
-  return <StaffElectionDetail id={id} role={member.role} />;
+  return <StaffElectionDetail id={id} role={member.role} userId={member.id} />;
 }

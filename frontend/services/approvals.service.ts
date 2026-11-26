@@ -11,3 +11,14 @@ export async function listApprovalRequests(params: { status?: ApprovalStatus; pa
   );
   return res.data.data;
 }
+
+
+
+export async function decideApprovalRequest(
+  requestId: string,
+  decision: "APPROVE" | "REJECT",
+  comment?: string
+): Promise<ApprovalRequest> {
+  const res = await api.post<ApiSuccess<ApprovalRequest>>(`/approval-requests/${requestId}/decide`, { decision, comment });
+  return res.data.data;
+}

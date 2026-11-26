@@ -3,7 +3,7 @@
 import { useId, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { CheckCircle2, Plus } from "lucide-react";
+import { CheckCircle2, Plus, Pencil } from "lucide-react";
 import type { Position, UserRole } from "@/types/api";
 import { useElection } from "@/hooks/useElections";
 import { useCandidates, usePositions } from "@/hooks/useCandidacy";
@@ -23,6 +23,9 @@ import { ToneBadge } from "@/components/voter/ElectionStatusBadge";
 import { ErrorPanel, LoadingCards } from "@/components/ui/LoadState";
 import { ElectionWorkflowActions } from "@/components/staff/ElectionWorkflowActions";
 import { PositionPanel } from "@/components/staff/PositionPanel";
+import { ActivationPanel } from "@/components/staff/ActivationPanel";
+import { PendingRequestCard } from "@/components/staff/PendingRequestCard";
+import { EditElectionDetails } from "@/components/staff/EditElectionDetails";
 
 // Candidates can be added and reviewed until voting starts (backend rule).
 const CANDIDATE_EDITABLE = [
@@ -38,9 +41,11 @@ const CANDIDATE_EDITABLE = [
 export function StaffElectionDetail({
   id,
   role,
+  userId,
 }: {
   id: string;
   role: UserRole;
+  userId: string;
 }) {
   const election = useElection(id);
   const positions = usePositions(id);
@@ -50,6 +55,7 @@ export function StaffElectionDetail({
   const justCreated = search.get("created") === "1";
   const unsaved = search.get("unsaved");
   const [notice, setNotice] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
 
   if (election.isLoading || positions.isLoading || candidates.isLoading) {
     return (
@@ -87,6 +93,14 @@ export function StaffElectionDetail({
   const canManageCandidates = officer && CANDIDATE_EDITABLE.includes(e.status);
   const allPositions = positions.data ?? [];
   const allCandidates = candidates.data ?? [];
+
+  const awaitingActivation = requests.some(
+    (r) => r.actionType === "ELECTION_ACTIVATION",
+  );
+  const showActivation =
+    officer &&
+    (e.status === "APPROVED" || e.status === "SCHEDULED") &&
+    !awaitingActivation;
 
   return (
     <>
@@ -129,33 +143,75 @@ export function StaffElectionDetail({
             >
               {e.name}
             </h2>
-            <ToneBadge {...STAFF_STAGE_DISPLAY[stage]} />
+            <div className="flex items-center gap-2">
+              <ToneBadge {...STAFF_STAGE_DISPLAY[stage]} />
+              {officer && e.status === "DRAFT" && !editing && (
+                <button
+                  onClick={() => setEditing(true)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--sevs-border)] px-3 py-1.5 text-sm font-bold text-[var(--sevs-navy)] hover:bg-gray-50"
+                >
+                  <Pencil className="h-3.5 w-3.5" aria-hidden="true" /> Edit
+                  details
+                </button>
+              )}
+            </div>
           </div>
-          {e.description && (
+          {editing && (
+            <EditElectionDetails
+              election={e}
+              onClose={() => setEditing(false)}
+              onSaved={(m) => {
+                setEditing(false);
+                setNotice(m);
+              }}
+            />
+          )}
+          {!editing && e.description && (
             <p className="mt-2 text-sm text-[var(--sevs-text-body)]">
               {e.description}
             </p>
           )}
-          <dl className="mt-4 grid gap-x-8 gap-y-2 text-sm sm:grid-cols-2">
-            <div>
-              <dt className="text-[var(--sevs-text-muted)]">Voting opens</dt>
-              <dd className="font-medium">{formatDateTime(e.startDate)}</dd>
-            </div>
-            <div>
-              <dt className="text-[var(--sevs-text-muted)]">Voting closes</dt>
-              <dd className="font-medium">{formatDateTime(e.endDate)}</dd>
-            </div>
-            <div>
-              <dt className="text-[var(--sevs-text-muted)]">
-                Approvals needed for key actions
-              </dt>
-              <dd className="font-medium">{e.requiredApprovals}</dd>
-            </div>
-            <div>
-              <dt className="text-[var(--sevs-text-muted)]">Created</dt>
-              <dd className="font-medium">{formatDateTime(e.createdAt)}</dd>
-            </div>
-          </dl>
+          {!editing && (
+            <dl className="mt-4 grid gap-x-8 gap-y-2 text-sm sm:grid-cols-2">
+              <div>
+                <dt className="text-[var(--sevs-text-muted)]">Voting opens</dt>
+                <dd className="font-medium">{formatDateTime(e.startDate)}</dd>
+              </div>
+              <div>
+                <dt className="text-[var(--sevs-text-muted)]">Voting closes</dt>
+                <dd className="font-medium">{formatDateTime(e.endDate)}</dd>
+              </div>
+              <div>
+                <dt className="text-[var(--sevs-text-muted)]">
+                  Approvals needed for key actions
+                </dt>
+                <dd className="font-medium">{e.requiredApprovals}</dd>
+              </div>
+              <div>
+                <dt className="text-[var(--sevs-text-muted)]">Created</dt>
+                <dd className="font-medium">{formatDateTime(e.createdAt)}</dd>
+              </div>
+            </dl>
+          )}
+          <div>
+            <dt className="text-[var(--sevs-text-muted)]">Voting opens</dt>
+            <dd className="font-medium">{formatDateTime(e.startDate)}</dd>
+          </div>
+          <div>
+            <dt className="text-[var(--sevs-text-muted)]">Voting closes</dt>
+            <dd className="font-medium">{formatDateTime(e.endDate)}</dd>
+          </div>
+          <div>
+            <dt className="text-[var(--sevs-text-muted)]">
+              Approvals needed for key actions
+            </dt>
+            <dd className="font-medium">{e.requiredApprovals}</dd>
+          </div>
+          <div>
+            <dt className="text-[var(--sevs-text-muted)]">Created</dt>
+            <dd className="font-medium">{formatDateTime(e.createdAt)}</dd>
+          </div>
+
           <p className="mt-4 rounded-lg bg-[var(--sevs-bg)] px-3 py-2 text-sm text-[var(--sevs-text-body)]">
             <span className="font-bold">Next: </span>
             {nextStep(e, role, requests)}
@@ -166,6 +222,24 @@ export function StaffElectionDetail({
             positions={allPositions}
             onDone={setNotice}
           />
+          {showActivation && (
+            <ActivationPanel
+              election={e}
+              positions={allPositions}
+              candidates={allCandidates}
+              onDone={setNotice}
+            />
+          )}
+          {requests.map((r) => (
+            <PendingRequestCard
+              key={r.id}
+              request={r}
+              electionId={e.id}
+              role={role}
+              userId={userId}
+              onDone={setNotice}
+            />
+          ))}``
         </section>
 
         <section aria-labelledby="positions-heading">

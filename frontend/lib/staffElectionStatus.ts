@@ -99,7 +99,7 @@ export function nextStep(
   const admin = role === "ELECTION_ADMINISTRATOR";
   const stage = staffStage(e);
   if (pending.length > 0) {
-    return `${pending.map(describePending).join(" · ")}. Waiting for officers or administrators to decide on the Approvals page.`;
+    return `${pending.map(describePending).join(" · ")}. Waiting for other officers or administrators to approve.`;
   }
   switch (stage) {
     case "DRAFT":
