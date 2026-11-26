@@ -11,8 +11,11 @@ export function notificationHref(
     case "CANDIDATE_STATUS_CHANGED":
       return role === "MEMBER" ? "/my-candidacy" : "/candidates";
     case "APPROVAL_REQUESTED":
-    case "APPROVAL_DECIDED":
       return role === "MEMBER" ? null : "/approvals";
+    case "APPROVAL_DECIDED":
+      // A decision is about an election: open it, where the outcome shows.
+      if (role === "MEMBER") return null;
+      return n.electionId ? `/elections/${n.electionId}` : "/approvals";
     default:
       return n.electionId ? `/elections/${n.electionId}` : null;
   }

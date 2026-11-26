@@ -7,10 +7,21 @@ import { formatDateTime } from "@/lib/electionStatus";
 // next and who does it, so nobody has to remember the process.
 
 export type StaffStage =
-  | "DRAFT" | "IN_REVIEW" | "APPROVED" | "OPENS_SOON" | "VOTING" | "ENDING"
-  | "CLOSED" | "PUBLISHED" | "CANCELLED" | "ARCHIVED";
+  | "DRAFT"
+  | "IN_REVIEW"
+  | "APPROVED"
+  | "OPENS_SOON"
+  | "VOTING"
+  | "ENDING"
+  | "CLOSED"
+  | "PUBLISHED"
+  | "CANCELLED"
+  | "ARCHIVED";
 
-export const STAFF_STAGE_DISPLAY: Record<StaffStage, { label: string; tone: BadgeTone }> = {
+export const STAFF_STAGE_DISPLAY: Record<
+  StaffStage,
+  { label: string; tone: BadgeTone }
+> = {
   DRAFT: { label: "Draft", tone: "gray" },
   IN_REVIEW: { label: "Awaiting admin review", tone: "amber" },
   APPROVED: { label: "Approved", tone: "blue" },
@@ -46,12 +57,24 @@ export function staffStage(e: Election, now: Date = new Date()): StaffStage {
 
 // Filter groups for the list.
 export type StaffTab = "ALL" | "PREPARING" | "VOTING" | "CLOSED" | "FINISHED";
-export const STAFF_TABS: { key: StaffTab; label: string; stages: StaffStage[] | null }[] = [
+export const STAFF_TABS: {
+  key: StaffTab;
+  label: string;
+  stages: StaffStage[] | null;
+}[] = [
   { key: "ALL", label: "All", stages: null },
-  { key: "PREPARING", label: "In preparation", stages: ["DRAFT", "IN_REVIEW", "APPROVED", "OPENS_SOON"] },
+  {
+    key: "PREPARING",
+    label: "In preparation",
+    stages: ["DRAFT", "IN_REVIEW", "APPROVED", "OPENS_SOON"],
+  },
   { key: "VOTING", label: "Voting", stages: ["VOTING", "ENDING"] },
   { key: "CLOSED", label: "Closed", stages: ["CLOSED"] },
-  { key: "FINISHED", label: "Finished", stages: ["PUBLISHED", "CANCELLED", "ARCHIVED"] },
+  {
+    key: "FINISHED",
+    label: "Finished",
+    stages: ["PUBLISHED", "CANCELLED", "ARCHIVED"],
+  },
 ];
 
 const ACTION_NAMES: Record<string, string> = {
@@ -67,7 +90,11 @@ export function describePending(r: ApprovalRequest): string {
 }
 
 // The next step, phrased for the person reading it.
-export function nextStep(e: Election, role: UserRole, pending: ApprovalRequest[] = []): string {
+export function nextStep(
+  e: Election,
+  role: UserRole,
+  pending: ApprovalRequest[] = [],
+): string {
   const officer = role === "ELECTION_OFFICER";
   const admin = role === "ELECTION_ADMINISTRATOR";
   const stage = staffStage(e);
@@ -77,14 +104,16 @@ export function nextStep(e: Election, role: UserRole, pending: ApprovalRequest[]
   switch (stage) {
     case "DRAFT":
       return officer
-        ? "Add positions and candidates, then submit it for an administrator's review."
+        ? "Add the positions, then submit it for an administrator's review. Members apply as candidates after it is approved."
         : "An election officer is preparing it.";
     case "IN_REVIEW":
-      return admin ? "Review it, then approve it or send it back to draft." : "Waiting for an administrator's review.";
+      return admin
+        ? "Review it, then approve it or send it back to draft."
+        : "Waiting for an administrator's review.";
     case "APPROVED":
       return officer
-        ? `Members can now see it and nominate themselves. When candidates are ready, request activation (needs ${e.requiredApprovals} approvals).`
-        : "Members can see it. Waiting for an officer to request activation.";
+        ? `Members can now apply as candidates. Review their applications; when every position has an approved candidate, request activation (needs ${e.requiredApprovals} approvals).`
+        : "Members can see it and apply as candidates. Officers review the applications, then request activation.";
     case "OPENS_SOON":
       return `Activated. Voting opens ${formatDateTime(e.startDate)}.`;
     case "VOTING":

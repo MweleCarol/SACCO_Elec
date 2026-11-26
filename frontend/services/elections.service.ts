@@ -49,3 +49,31 @@ export async function createPosition(
   const res = await api.post<ApiSuccess<Position>>(`/elections/${electionId}/positions`, input);
   return res.data.data;
 }
+
+
+export async function deletePosition(positionId: string): Promise<void> {
+  await api.delete(`/positions/${positionId}`);
+}
+
+
+
+// Both routes go to the same handler; the body's decision decides the outcome.
+export async function decideCandidate(
+  candidateId: string,
+  decision: "APPROVE" | "REJECT",
+  comment?: string
+): Promise<Candidate> {
+  const path = decision === "APPROVE" ? "approve" : "reject";
+  const res = await api.post<ApiSuccess<Candidate>>(`/candidates/${candidateId}/${path}`, { decision, comment });
+  return res.data.data;
+}
+
+export async function submitForReview(electionId: string): Promise<Election> {
+  const res = await api.post<ApiSuccess<Election>>(`/elections/${electionId}/submit-approval`, {});
+  return res.data.data;
+}
+
+export async function reviewElection(electionId: string, decision: "APPROVE" | "REJECT", comment?: string): Promise<Election> {
+  const res = await api.post<ApiSuccess<Election>>(`/elections/${electionId}/review-approval`, { decision, comment });
+  return res.data.data;
+}

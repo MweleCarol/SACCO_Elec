@@ -46,3 +46,42 @@ export function useCreateElection() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.elections }),
   });
 }
+
+// Every change on the election page refreshes the same data, so the page,
+// the list and the member views never disagree.
+function useRefreshElection(electionId: string) {
+  const queryClient = useQueryClient();
+  return () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.election(electionId) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.elections }),
+      queryClient.invalidateQueries({ queryKey: ["positions", electionId] }),
+      queryClient.invalidateQueries({ queryKey: ["candidates", electionId] }),
+      queryClient.invalidateQueries({ queryKey: ["approval-requests"] }),
+    ]);
+}
+
+export function useElectionActions(electionId: string) {
+  const refresh = useRefreshElection(electionId);
+  const opts = { onSuccess: refresh };
+  return {
+    addPosition: useMutation({
+      mutationFn: (input: { name: string; description?: string; order: number }) =>
+        electionsService.createPosition(electionId, input),
+      ...opts,
+    }),
+    deletePosition: useMutation({ mutationFn: electionsService.deletePosition, ...opts }),
+    
+    decideCandidate: useMutation({
+      mutationFn: (v: { candidateId: string; decision: "APPROVE" | "REJECT"; comment?: string }) =>
+        electionsService.decideCandidate(v.candidateId, v.decision, v.comment),
+      ...opts,
+    }),
+    submitForReview: useMutation({ mutationFn: () => electionsService.submitForReview(electionId), ...opts }),
+    review: useMutation({
+      mutationFn: (v: { decision: "APPROVE" | "REJECT"; comment?: string }) =>
+        electionsService.reviewElection(electionId, v.decision, v.comment),
+      ...opts,
+    }),
+  };
+}
