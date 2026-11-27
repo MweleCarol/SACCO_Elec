@@ -2,9 +2,10 @@ import { Router } from "express";
 import { authenticate } from "../../shared/middleware/authenticate";
 import { authorize } from "../../shared/middleware/authorize";
 import { validate } from "../../shared/middleware/validate";
+import { aiLimiter } from "../../shared/middleware/rateLimiter";
 import * as controller from "./ai-governance.controller";
 import {
-  listInsightsQuerySchema, insightIdParamSchema, askCopilotSchema, electionIdParamSchema,
+   listInsightsQuerySchema, insightIdParamSchema, askCopilotSchema, askAssistantSchema, electionIdParamSchema,
 } from "./ai-governance.schema";
 
 const router = Router();
@@ -20,8 +21,13 @@ router.post(
   validate({ params: insightIdParamSchema }), controller.acknowledge
 );
 router.post(
-  "/copilot/query", authorize("ELECTION_OFFICER", "ELECTION_ADMINISTRATOR"),
+  "/copilot/query", authorize("ELECTION_OFFICER", "ELECTION_ADMINISTRATOR"), aiLimiter,
   validate({ body: askCopilotSchema }), controller.askCopilot
+);
+// Members' help assistant: public election information only.
+router.post(
+  "/assistant/query", authorize("MEMBER"), aiLimiter,
+  validate({ body: askAssistantSchema }), controller.askAssistant
 );
 router.get(
   "/reports/:electionId", authorize(...readRoles),

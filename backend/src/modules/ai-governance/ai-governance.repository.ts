@@ -1,4 +1,5 @@
 import { prisma } from "../../config/prisma";
+import { memberVisibleElectionWhere } from "../../shared/constants/visibility";
 import { AuditLog, RiskLevel } from "@prisma/client";
 
 export function getRecentAuditLogs(since: Date, actions?: string[]): Promise<AuditLog[]> {
@@ -86,4 +87,26 @@ export async function getElectionReportData(electionId: string) {
     prisma.aIInsight.count({ where: { resourceId: electionId } }),
   ]);
   return { election, positionCount, candidateCount, participationCount, insightCount };
+}
+
+// What the member help assistant may know: only what any member can already
+// see in the app. Elections members can see, their positions, and APPROVED
+// candidates' display names. No manifestos (free text written by members,
+// which could carry instructions aimed at the model), no turnout, no votes.
+export function getMemberVisibleElectionSummaries() {
+  return prisma.election.findMany({
+    where: memberVisibleElectionWhere,
+    orderBy: { startDate: "desc" },
+    take: 10,
+    select: {
+      name: true, status: true, startDate: true, endDate: true, resultsPublishedAt: true,
+      positions: {
+        orderBy: { order: "asc" },
+        select: {
+          name: true,
+          candidates: { where: { status: "APPROVED" }, select: { displayName: true }, orderBy: { displayName: "asc" } },
+        },
+      },
+    },
+  });
 }

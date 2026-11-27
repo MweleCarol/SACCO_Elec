@@ -1,6 +1,6 @@
 import { prisma } from "../../config/prisma";
 import { computeAuditHash } from "../../shared/utils/hash";
-import { api, bearer, createOpenElection, createUser } from "../../../tests/helpers";
+import { api, bearer, createCandidate, createElection, createOpenElection, createPosition, createUser } from "../../../tests/helpers";
 
 // The Copilot must never reach the real Gemini API in tests. The mock records
 // exactly what would have been sent, so the test can prove no ballot data leaves.
@@ -145,5 +145,86 @@ describe("copilot", () => {
     const res = await api().post("/api/v1/governance/copilot/query").set(bearer(officer)).send({ question: "Status please" });
     expect(res.status).toBe(503);
     expect(JSON.stringify(res.body)).not.toMatch(/quota|key=/);
+  });
+});
+
+describe("member help assistant", () => {
+  const ask = (u: { id: string; role: "MEMBER" | "ELECTION_OFFICER" | "ELECTION_ADMINISTRATOR" | "AUDITOR" }, body: object) =>
+    api().post("/api/v1/governance/assistant/query").set(bearer(u)).send(body);
+
+  it("knows only what members can see: visible elections, positions, approved candidates", async () => {
+    const officer = await createUser("ELECTION_OFFICER");
+    const fx = await createOpenElection(officer.id);
+    await createCandidate(fx.election.id, fx.chair.id, "PENDING_REVIEW", "Pendo Pending");
+    const draft = await createElection(officer.id, { name: "Secret Draft Election" });
+    await createPosition(draft.id, "Hidden Seat");
+    const voter = await createUser("MEMBER");
+    await api().post(`/api/v1/elections/${fx.election.id}/ballot`).set(bearer(voter)).send({
+      selections: [{ positionId: fx.chair.id, candidateId: fx.chairA.id }, { positionId: fx.treasurer.id, candidateId: fx.treasA.id }],
+    });
+    generateContent.mockReset();
+    generateContent.mockResolvedValue({ text: "**Voting** is open.\n* Choose one per position." });
+
+    const member = await createUser("MEMBER");
+    const res = await ask(member, { question: "Who should I vote for?" });
+    expect(res.status).toBe(200);
+    expect(res.body.data.answer).toBe("Voting is open.\n- Choose one per position.");
+    expect(res.body.data.disclaimer).toMatch(/cannot see votes/);
+
+    const call = generateContent.mock.calls[0][0];
+    const system: string = call.config.systemInstruction;
+    expect(system).toContain(fx.election.name);
+    for (const name of ["Chairperson", "Alice", "Bob", "Carol", "Dan"]) expect(system).toContain(name);
+    expect(system).toMatch(/Never recommend, rank, praise or criticise any candidate/);
+    const sent = JSON.stringify(call);
+    for (const hidden of ["Pendo Pending", "Secret Draft Election", "Hidden Seat", voter.id, fx.chairA.id, "encryptedPayload", "anonymousToken", "manifesto text"]) {
+      expect(sent).not.toContain(hidden);
+    }
+  });
+
+  it("sends earlier turns so follow-ups make sense, and limits their number", async () => {
+    generateContent.mockReset();
+    generateContent.mockResolvedValue({ text: "It closes at 5 pm." });
+    const member = await createUser("MEMBER");
+    const history = [
+      { role: "user", text: "Is the board election open?" },
+      { role: "assistant", text: "Yes, voting is open." },
+    ];
+    expect((await ask(member, { question: "When does it close?", history })).status).toBe(200);
+    expect(generateContent.mock.calls[0][0].contents).toEqual([
+      { role: "user", parts: [{ text: "Is the board election open?" }] },
+      { role: "model", parts: [{ text: "Yes, voting is open." }] },
+      { role: "user", parts: [{ text: "When does it close?" }] },
+    ]);
+    const tooLong = Array.from({ length: 7 }, () => ({ role: "user", text: "hi" }));
+    expect((await ask(member, { question: "Hello there", history: tooLong })).status).toBe(422);
+  });
+
+  it("is for members only; staff use the Copilot", async () => {
+    expect((await api().post("/api/v1/governance/assistant/query").send({ question: "How do I vote?" })).status).toBe(401);
+    for (const role of ["ELECTION_OFFICER", "ELECTION_ADMINISTRATOR", "AUDITOR"] as const) {
+      expect((await ask(await createUser(role), { question: "How do I vote?" })).status).toBe(403);
+    }
+  });
+
+  it("audits use without storing the question", async () => {
+    generateContent.mockReset();
+    generateContent.mockResolvedValue({ text: "From the Elections page." });
+    const member = await createUser("MEMBER");
+    await ask(member, { question: "Where do I find my private thing XYZ?" });
+    const log = await prisma.auditLog.findFirstOrThrow({ where: { actorId: member.id, action: "AI_ASSISTANT_QUERY" } });
+    expect(log.metadata).toMatchObject({ questionLength: 37, turns: 0 });
+    expect(JSON.stringify(log)).not.toContain("XYZ");
+  });
+
+  it("limits each user to 20 questions per 15 minutes", async () => {
+    generateContent.mockReset();
+    generateContent.mockResolvedValue({ text: "OK." });
+    const member = await createUser("MEMBER");
+    for (let i = 0; i < 20; i++) expect((await ask(member, { question: "How do I vote?" })).status).toBe(200);
+    const blocked = await ask(member, { question: "How do I vote?" });
+    expect(blocked.status).toBe(429);
+    // Another member is not affected.
+    expect((await ask(await createUser("MEMBER"), { question: "How do I vote?" })).status).toBe(200);
   });
 });

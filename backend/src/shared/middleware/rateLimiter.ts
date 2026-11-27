@@ -1,4 +1,4 @@
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { env } from "../../config/env";
 import { sendError } from "../responses/ApiResponse";
 
@@ -29,5 +29,19 @@ export const authLimiter = rateLimit({
   legacyHeaders: false,
   handler: (_req, res) => {
     sendError(res, "Too many attempts. Please wait before trying again.", 429);
+  },
+});
+
+// For the AI assistants: every question costs a model call, so each signed-in
+// user gets AI_RATE_LIMIT_MAX questions per 15 minutes. Keyed by user, not IP,
+// so members sharing a SACCO office connection do not use up each other's quota.
+export const aiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: env.AI_RATE_LIMIT_MAX,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.user?.id ?? ipKeyGenerator(req.ip ?? ""),
+  handler: (_req, res) => {
+    sendError(res, "You have asked a lot of questions in a short time. Please wait a few minutes and try again.", 429);
   },
 });

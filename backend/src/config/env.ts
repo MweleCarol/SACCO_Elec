@@ -30,6 +30,8 @@ const envSchema = z.object({
   // Login and MFA attempts allowed per IP per 15 minutes. Keep 10 in
   // production; raise it in .env only while testing.
   AUTH_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(10),
+  // Questions to the AI assistants allowed per user per 15 minutes (cost and abuse guard).
+  AI_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(20),
 
   // How many reverse proxies or load balancers sit in front of the app
   // (0 = none). Without this behind a proxy, every client looks like one IP.

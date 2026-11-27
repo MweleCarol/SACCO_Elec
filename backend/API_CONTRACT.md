@@ -351,7 +351,10 @@ Ties go to the earliest-registered candidate. Group by `positionName` for displa
 | `GET /governance/insights/:id` | O, A, Au | — | `AIInsight` |
 | `POST /governance/insights/:id/acknowledge` | O, A | — | `AIInsight` |
 | `GET /governance/reports/:electionId` | O, A, Au | — | `{ electionId, name, status, positionCount, candidateCount, participationCount, openInsightCount }`. `participationCount` is the **live turnout**. |
-| `POST /governance/copilot/query` | O, A | `{ question }` (3–1000 characters) | `{ answer, disclaimer }`. 503 when no Gemini key is configured. |
+| `POST /governance/copilot/query` | O, A | `{ question, history? }`. `question` 3–1000 characters; `history` = up to 6 earlier turns `{ role: "user"\|"assistant", text }` | `{ answer, disclaimer }`. Sees aggregates only. 503 when no Gemini key is configured. |
+| `POST /governance/assistant/query` | M | same as above | `{ answer, disclaimer }`. Members' help assistant: sees only the guide to SEVS and what members can already see (visible elections, dates, positions, APPROVED candidates' names). No manifestos, turnout or votes; never recommends candidates. 503 when no key. |
+
+Both AI endpoints: at most `AI_RATE_LIMIT_MAX` (default 20) questions per user per 15 minutes (429 after that). Each question is audited as `AI_COPILOT_QUERY` or `AI_ASSISTANT_QUERY` with `{ questionLength, turns }`; the question text is never stored. | O, A | `{ question }` (3–1000 characters) | `{ answer, disclaimer }`. 503 when no Gemini key is configured. |
 
 ---
 
