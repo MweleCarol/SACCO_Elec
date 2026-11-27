@@ -67,6 +67,8 @@ export interface User {
   status: UserStatus;
   mfaEnabled: boolean;
   membershipNumber: string | null;
+  // Staff without two-factor: only the setup screen is available until done.
+  mfaSetupRequired?: boolean;
 }
 
 export interface LoginSuccess {

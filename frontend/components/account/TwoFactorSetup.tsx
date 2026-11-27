@@ -10,7 +10,9 @@ import { LoadingCards } from "@/components/ui/LoadState";
 
 // Two steps: (1) scan the QR code, or type the key, and confirm one code;
 // (2) save the backup codes. Focus moves to each step's heading.
-export function TwoFactorSetup({ onCancel, onDone }: { onCancel: () => void; onDone: (message: string) => void }) {
+export function TwoFactorSetup({
+  onCancel, onDone, cancelLabel = "Cancel", finishLabel,
+}: { onCancel: () => void; onDone: (message: string) => void; cancelLabel?: string; finishLabel?: string }) {
   const twoFactor = useTwoFactor();
   const [code, setCode] = useState("");
   const [codeError, setCodeError] = useState<string | null>(null);
@@ -52,7 +54,7 @@ export function TwoFactorSetup({ onCancel, onDone }: { onCancel: () => void; onD
         <h3 ref={headingRef} tabIndex={-1} className="mb-2 font-bold text-[var(--sevs-navy)] outline-none">
           Step 2 of 2: save your backup codes
         </h3>
-        <BackupCodesPanel codes={backupCodes} onFinish={() => onDone("Two-factor sign-in is on. You'll be asked for a code when you sign in.")} />
+        <BackupCodesPanel codes={backupCodes} finishLabel={finishLabel} onFinish={() => onDone("Two-factor sign-in is on. You'll be asked for a code when you sign in.")} />
       </div>
     );
   }
@@ -130,7 +132,7 @@ export function TwoFactorSetup({ onCancel, onDone }: { onCancel: () => void; onD
               {twoFactor.confirm.isPending ? "Checking…" : "Confirm"}
             </button>
             <button type="button" onClick={onCancel} className="rounded-lg border border-[var(--sevs-border)] px-4 py-2 text-sm font-bold text-[var(--sevs-navy)] hover:bg-gray-50">
-              Cancel
+              {cancelLabel}
             </button>
           </div>
         </form>
