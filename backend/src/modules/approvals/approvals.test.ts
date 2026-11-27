@@ -198,7 +198,9 @@ describe("cancellation and reschedule through DAT", () => {
     const log = await prisma.auditLog.findFirstOrThrow({
       where: { action: "ELECTION_CANCELLED" },
     });
-    expect(log.metadata).toEqual({ reason: "Board decision" });
+    expect(log.metadata).toEqual({ reason: "Board decision", previousStatus: election.status });
+    expect(e.cancelledAt).not.toBeNull();
+    expect(e.cancellationReason).toBe("Board decision");
     expect(
       (
         await api()

@@ -46,8 +46,13 @@ export const rescheduleElectionSchema = z
 
 export type RescheduleElectionInput = z.infer<typeof rescheduleElectionSchema>;
 
+// Members are shown this reason, so it must say something.
 export const cancelElectionSchema = z.object({
-  reason: z.string().trim().min(5, "A cancellation reason is required."),
+  reason: z
+    .string()
+    .trim()
+    .min(10, "Explain why in at least 10 characters. Members will see this reason.")
+    .max(500, "Keep the reason under 500 characters."),
 });
 
 export type CancelElectionInput = z.infer<typeof cancelElectionSchema>;

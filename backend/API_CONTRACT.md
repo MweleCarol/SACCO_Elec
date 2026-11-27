@@ -169,7 +169,8 @@ interface Election {
   startDate: string; endDate: string; status: ElectionStatus; requiredApprovals: number;
   createdById: string; createdAt: string; updatedAt: string;
   approvedAt: string | null; activatedAt: string | null; closedAt: string | null;
-  resultsPublishedAt: string | null; archivedAt: string | null;
+    resultsPublishedAt: string | null; archivedAt: string | null;
+  cancelledAt: string | null; cancellationReason: string | null; // set only when cancelled (status ARCHIVED); members see the reason
 }
 
 interface Position {
@@ -256,8 +257,8 @@ A bad row does not stop the batch; it appears in `errors`.
 | `POST /elections/:id/submit-approval` | O | — | `Election` (`PENDING_APPROVAL`). **409** if the election has no positions. |
 | `POST /elections/:id/review-approval` | A | `{ decision: "APPROVE" \| "REJECT", comment? }` | `Election` (`APPROVED` or back to `DRAFT`). The officer who created it gets an `APPROVAL_DECIDED` notification that includes the comment. |
 | `POST /elections/:id/activate` | O | — | `ApprovalRequest` **(DAT)**. **409** unless the ballot is complete: at least one position, every position with at least one `APPROVED` candidate, and `endDate` still in the future. Checked again when the final approval executes (a candidate may have withdrawn); if it fails then, the decision returns 409 and the election stays as it was. |
-| `POST /elections/:id/reschedule` | O | `{ startDate, endDate }`. Not while `ACTIVE`. | `ApprovalRequest` **(DAT)** |
-| `POST /elections/:id/cancel` | A | `{ reason }` (5+ characters) | `ApprovalRequest` **(DAT)** |
+| `POST /elections/:id/reschedule` | O | `{ startDate, endDate }`. Only `APPROVED` or `SCHEDULED` (a draft's dates are edited with `PATCH`); start in the future; not the current dates (to the minute). | `ApprovalRequest` **(DAT)** with `payload { startDate, endDate, previousStartDate, previousEndDate }`. 409 if one is already pending. Once executed, members are notified of the new dates. |
+| `POST /elections/:id/cancel` | A | `{ reason }` (10–500 characters; members see it) | `ApprovalRequest` **(DAT)**. Only `DRAFT`, `APPROVED` or `SCHEDULED`: once voting is open the election is closed, never cancelled. 409 if one is already pending. Once executed: `ARCHIVED` with `cancelledAt` and `cancellationReason`; members are notified if it had been announced. |
 | `POST /elections/:id/close` | O | — | `Election` (`CLOSED`). Direct, no DAT. |
 
 Calling `activate`, `reschedule` or `cancel` again while a request is pending returns **the same** pending request.
@@ -284,8 +285,7 @@ On both routes the `decision` field in the body decides the outcome, not the URL
 
 | Method & path | Roles | Request | `data` |
 |---|---|---|---|
-| `POST /candidates/:id/withdraw` | O, or the linked member | `{ reason? }` (body optional) | `Candidate` (`WITHDRAWN`) |
-
+| `POST /candidates/:id/withdraw` | O, or the linked member | `{ reason? }` (max 500). **Officers must give a reason of 10+ characters** (422); members may leave it out. Only before voting starts. | `Candidate` (`WITHDRAWN`). An officer's withdrawal notifies the member with the reason; a member's own withdrawal notifies officers. |
 ### Self-nomination (members)
 | Method & path | Roles | Request | `data` |
 |---|---|---|---|
@@ -316,6 +316,8 @@ On both routes the `decision` field in the body decides the outcome, not the URL
 
 Errors: 403 on your own request; 409 if you already decided, it's already resolved, or it has expired.
 Show progress as e.g. **"1 of 2 approvals"** using `approveCount` / `requiredApprovals`.
+
+Every new approval request notifies the officers and administrators who can decide it (not the requester), type `APPROVAL_REQUESTED`.
 
 ### Results
 | Method & path | Roles | Request | `data` |

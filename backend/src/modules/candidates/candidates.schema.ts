@@ -9,8 +9,10 @@ export const candidateDecisionSchema = z.object({
 
 export type CandidateDecisionInput = z.infer<typeof candidateDecisionSchema>;
 
+// Officers must give a reason (checked in the service, because members
+// withdrawing themselves need not); the member is told it.
 export const withdrawCandidateSchema = z.object({
-  reason: z.string().trim().optional(),
+  reason: z.string().trim().max(500, "Keep the reason under 500 characters.").optional(),
 });
 
 export type WithdrawCandidateInput = z.infer<typeof withdrawCandidateSchema>;

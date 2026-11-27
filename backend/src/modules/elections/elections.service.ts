@@ -6,6 +6,7 @@ import {
 import { ForbiddenError } from "../../shared/errors/ForbiddenError";
 import { ConflictError } from "../../shared/errors/ConflictError";
 import { NotFoundError } from "../../shared/errors/NotFoundError";
+import { ValidationError } from "../../shared/errors/ValidationError";
 import {
   assertElectionVisible,
   memberVisibleElectionWhere,
@@ -362,8 +363,14 @@ export async function activateElection(officerId: string, electionId: string) {
     electionId,
     requestedById: officerId,
     requiredApprovals: election.requiredApprovals,
+    summary: `Open voting for "${election.name}"`,
   });
 }
+
+// Elections can be cancelled before voting starts (draft, approved or
+// scheduled). Once voting is open the only way forward is to close it, so
+// ballots already cast are never thrown away by a cancellation.
+const CANCELLABLE_STATUSES: ElectionStatus[] = ["DRAFT", "APPROVED", "SCHEDULED"];
 
 export async function cancelElection(
   adminId: string,
@@ -371,7 +378,13 @@ export async function cancelElection(
   reason: string,
 ) {
   const election = await getElectionOrThrow(electionId);
-  assertTransitionOrConflict(election.status, "ARCHIVED");
+  if (!CANCELLABLE_STATUSES.includes(election.status)) {
+    throw new ConflictError(
+      election.status === "PENDING_APPROVAL"
+        ? "This election is waiting for approval. Send it back to draft first, then cancel it."
+        : "Only elections that have not started voting can be cancelled. Once voting is open, close the election instead."
+    );
+  }
 
   return requestApproval({
     actionType: "ELECTION_CANCELLATION",
@@ -379,6 +392,8 @@ export async function cancelElection(
     requestedById: adminId,
     requiredApprovals: election.requiredApprovals,
     payload: { reason },
+    ifPending: "conflict",
+    summary: `Cancel "${election.name}"`,
   });
 }
 
@@ -388,8 +403,21 @@ export async function rescheduleElection(
   input: RescheduleElectionInput,
 ) {
   const election = await getElectionOrThrow(electionId);
-  if (!["DRAFT", "APPROVED", "SCHEDULED"].includes(election.status)) {
-    throw new ForbiddenError("This election can no longer be rescheduled.");
+  // A draft's dates are edited directly; approval is only needed once the
+  // election has been announced to members.
+  if (election.status === "DRAFT" || election.status === "PENDING_APPROVAL") {
+    throw new ConflictError("This election has not been approved yet. Edit its dates in Details instead.");
+  }
+  if (!RESCHEDULABLE_STATUSES.includes(election.status)) {
+    throw new ConflictError("Voting has already started, so this election can no longer be rescheduled.");
+  }
+  if (input.startDate.getTime() <= Date.now()) {
+    throw new ValidationError([{ field: "startDate", message: "The new start must be in the future." }]);
+  }
+  // To the minute: date pickers have no seconds.
+  const sameMinute = (a: Date, b: Date) => Math.floor(a.getTime() / 60000) === Math.floor(b.getTime() / 60000);
+  if (sameMinute(input.startDate, election.startDate) && sameMinute(input.endDate, election.endDate)) {
+    throw new ValidationError([{ field: "startDate", message: "These are the current dates. Change at least one of them." }]);
   }
 
   return requestApproval({
@@ -400,9 +428,19 @@ export async function rescheduleElection(
     payload: {
       startDate: input.startDate.toISOString(),
       endDate: input.endDate.toISOString(),
+      // Kept so approvers see what changes from what to what.
+      previousStartDate: election.startDate.toISOString(),
+      previousEndDate: election.endDate.toISOString(),
     },
+    ifPending: "conflict",
+    summary: `Reschedule "${election.name}"`,
   });
 }
+
+const RESCHEDULABLE_STATUSES: ElectionStatus[] = ["APPROVED", "SCHEDULED"];
+
+const kenyaTime = (d: Date) =>
+  d.toLocaleString("en-KE", { timeZone: "Africa/Nairobi", dateStyle: "medium", timeStyle: "short" });
 
 // --- These three EXECUTE the change. Called only by approvals.service, inside
 // its resolution transaction, after DAT quorum is reached. They are FAIL-CLOSED:
@@ -435,9 +473,7 @@ export async function executeActivation(
   tx: Prisma.TransactionClient,
 ): Promise<() => void> {
   await assertTransitionInTx(tx, electionId, "ACTIVE");
-  const current = await tx.election.findUniqueOrThrow({
-    where: { id: electionId },
-  });
+  const current = await tx.election.findUniqueOrThrow({ where: { id: electionId } });
   await assertBallotReady(current, tx);
 
   const election = await tx.election.update({
@@ -469,12 +505,20 @@ export async function executeCancellation(
   adminId: string,
   reason: string,
   tx: Prisma.TransactionClient,
-): Promise<undefined> {
+): Promise<(() => void) | undefined> {
+  // Re-checked here: the request may have waited days, and voting may have
+  // started in the meantime.
+  const current = await tx.election.findUnique({ where: { id: electionId } });
+  if (!current) throw new NotFoundError("Election");
+  if (!CANCELLABLE_STATUSES.includes(current.status)) {
+    throw new ConflictError("This election can no longer be cancelled: voting has started or it has already ended.");
+  }
   await assertTransitionInTx(tx, electionId, "ARCHIVED");
 
-  await tx.election.update({
+  const now = new Date();
+  const election = await tx.election.update({
     where: { id: electionId },
-    data: { status: "ARCHIVED", archivedAt: new Date(), updatedById: adminId },
+    data: { status: "ARCHIVED", archivedAt: now, cancelledAt: now, cancellationReason: reason, updatedById: adminId },
   });
 
   await writeAuditLogInTransaction(tx, {
@@ -484,10 +528,19 @@ export async function executeCancellation(
     resourceId: electionId,
     electionId,
     outcome: "SUCCESS",
-    metadata: { reason },
+    metadata: { reason, previousStatus: current.status },
   });
 
-  return undefined;
+  // Members only knew about it if it had been approved.
+  if (!election.approvedAt) return undefined;
+  return () => {
+    notifyAllActiveMembers({
+      type: "SYSTEM_ALERT",
+      title: "Election cancelled",
+      message: `"${election.name}" has been cancelled. Reason: ${reason}`,
+      electionId,
+    }).catch(() => {});
+  };
 }
 
 export async function executeReschedule(
@@ -495,14 +548,18 @@ export async function executeReschedule(
   officerId: string,
   dates: { startDate: string; endDate: string },
   tx: Prisma.TransactionClient,
-): Promise<undefined> {
+): Promise<() => void> {
   const current = await tx.election.findUnique({ where: { id: electionId } });
   if (!current) throw new NotFoundError("Election");
-  if (!["DRAFT", "APPROVED", "SCHEDULED"].includes(current.status)) {
-    throw new ConflictError("This election can no longer be rescheduled.");
+  if (!RESCHEDULABLE_STATUSES.includes(current.status)) {
+    throw new ConflictError("Voting has already started, so this election can no longer be rescheduled.");
+  }
+  // Approval can take days: new dates that are already in the past are refused.
+  if (new Date(dates.startDate).getTime() <= Date.now()) {
+    throw new ConflictError("The new start time has already passed. Ask for a new reschedule with later dates.");
   }
 
-  await tx.election.update({
+  const election = await tx.election.update({
     where: { id: electionId },
     data: {
       startDate: new Date(dates.startDate),
@@ -518,7 +575,18 @@ export async function executeReschedule(
     resourceId: electionId,
     electionId,
     outcome: "SUCCESS",
+    metadata: {
+      from: { startDate: current.startDate.toISOString(), endDate: current.endDate.toISOString() },
+      to: { startDate: dates.startDate, endDate: dates.endDate },
+    },
   });
 
-  return undefined;
+  return () => {
+    notifyAllActiveMembers({
+      type: "ELECTION_SCHEDULED",
+      title: "New election dates",
+      message: `"${election.name}" has new dates. Voting opens ${kenyaTime(election.startDate)} and closes ${kenyaTime(election.endDate)}.`,
+      electionId,
+    }).catch(() => {});
+  };
 }

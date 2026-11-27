@@ -76,6 +76,9 @@ model Election {
   closedAt           DateTime?
   resultsPublishedAt DateTime?
   archivedAt         DateTime?
+  // Set when the election was cancelled (status ARCHIVED) rather than finished.
+  cancelledAt        DateTime?
+  cancellationReason String?
   eligibleVoterCount Int?
   approvalRequests   ApprovalRequest[]
   candidates         Candidate[]

@@ -2,6 +2,7 @@ import { Candidate, UserRole } from "@prisma/client";
 import { NotFoundError } from "../../shared/errors/NotFoundError";
 import { ForbiddenError } from "../../shared/errors/ForbiddenError";
 import { ConflictError } from "../../shared/errors/ConflictError";
+import { ValidationError } from "../../shared/errors/ValidationError";
 import { writeAuditLog } from "../audit/audit.service";
 import * as candidatesRepository from "./candidates.repository";
 import { findElectionById } from "../elections/elections.repository";
@@ -152,27 +153,38 @@ export async function withdrawCandidate(
     throw new ForbiddenError("You can only withdraw your own candidacy.");
   }
 
-  if (candidate.status === "WITHDRAWN" || candidate.status === "REJECTED") {
-    throw new ConflictError(
-      "This candidate has already been withdrawn or rejected.",
-    );
+    if (candidate.status === "WITHDRAWN" || candidate.status === "REJECTED") {
+    throw new ConflictError("This candidate has already been withdrawn or rejected.");
+  }
+  // An officer removing someone else's candidacy must say why; the member is told.
+  if (!isOwnCandidacy && (!reason || reason.length < 10)) {
+    throw new ValidationError([{ field: "reason", message: "Explain why in at least 10 characters. The member will see this reason." }]);
   }
 
-  const updated = await candidatesRepository.setCandidateStatus(
-    candidateId,
-    "WITHDRAWN",
-    new Date(),
-  );
+  const updated = await candidatesRepository.setCandidateStatus(candidateId, "WITHDRAWN", new Date());
 
   await writeAuditLog({
-    actorId: requesterId,
-    action: "CANDIDATE_WITHDRAWN",
-    resourceType: "Candidate",
-    resourceId: candidateId,
-    electionId: candidate.electionId,
-    outcome: "SUCCESS",
-    metadata: { reason, selfWithdrawn: isOwnCandidacy },
+    actorId: requesterId, action: "CANDIDATE_WITHDRAWN", resourceType: "Candidate",
+    resourceId: candidateId, electionId: candidate.electionId,
+    outcome: "SUCCESS", metadata: { reason, selfWithdrawn: isOwnCandidacy, previousStatus: candidate.status },
   });
+
+  if (isOwnCandidacy) {
+    // Officers need to know: a position may now have no approved candidate.
+    notifyRole("ELECTION_OFFICER", {
+      type: "CANDIDATE_STATUS_CHANGED",
+      title: "A candidate withdrew",
+      message: `${candidate.displayName} has withdrawn their candidacy.${reason ? ` Reason: ${reason}` : ""}`,
+      electionId: candidate.electionId,
+    }).catch(() => {});
+  } else if (candidate.memberId) {
+    notify([candidate.memberId], {
+      type: "CANDIDATE_STATUS_CHANGED",
+      title: "Your candidacy was withdrawn",
+      message: `An election officer withdrew your candidacy. Reason: ${reason}`,
+      electionId: candidate.electionId,
+    }).catch(() => {});
+  }
 
   return toCandidateDto(updated);
 }

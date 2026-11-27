@@ -16,6 +16,9 @@ export interface ElectionDto {
   closedAt: Date | null;
   resultsPublishedAt: Date | null;
   archivedAt: Date | null;
+  // Cancelled (rather than finished) elections; the reason is shown to members.
+  cancelledAt: Date | null;
+  cancellationReason: string | null;
 }
 
 // A plain pass-through today, but kept as an explicit mapping function
@@ -39,6 +42,8 @@ export function toElectionDto(election: Election): ElectionDto {
     closedAt: election.closedAt,
     resultsPublishedAt: election.resultsPublishedAt,
     archivedAt: election.archivedAt,
+    cancelledAt: election.cancelledAt,
+    cancellationReason: election.cancellationReason,
   };
 }
 

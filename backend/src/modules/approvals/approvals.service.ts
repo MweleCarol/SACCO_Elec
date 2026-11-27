@@ -4,7 +4,7 @@ import { NotFoundError } from "../../shared/errors/NotFoundError";
 import { ForbiddenError } from "../../shared/errors/ForbiddenError";
 import { ConflictError } from "../../shared/errors/ConflictError";
 import { writeAuditLog, writeAuditLogInTransaction } from "../audit/audit.service";
-import { notify } from "../notifications/notifications.service";
+import { notify, notifyApprovers } from "../notifications/notifications.service";
 import * as approvalsRepository from "./approvals.repository";
 import { toApprovalRequestDto, ApprovalRequestDto } from "./approvals.dto";
 import { DecisionInput, ListApprovalRequestsQuery } from "./approvals.schema";
@@ -38,6 +38,14 @@ export async function requestApproval(params: {
   requestedById: string;
   requiredApprovals: number;
   payload?: Record<string, unknown>;
+  // What to do if the same kind of request is already pending for this
+  // election. "return" hands back the existing one (activation: asking twice
+  // means the same thing). "conflict" refuses, because a reschedule or
+  // cancellation carries its own dates or reason, and silently returning the
+  // old request would hide that the new details were never sent.
+  ifPending?: "return" | "conflict";
+  // Shown to approvers in their notification, e.g. "Reschedule Board 2026".
+  summary?: string;
 }): Promise<ApprovalRequestDto> {
   const expiredIds = await approvalsRepository.expireStaleRequests(params.electionId, params.actionType);
   for (const id of expiredIds) {
@@ -49,6 +57,11 @@ export async function requestApproval(params: {
   }
 
   const existing = await approvalsRepository.findPendingRequest(params.electionId, params.actionType);
+  if (existing && params.ifPending === "conflict") {
+    throw new ConflictError(
+      "A request like this is already waiting for approval for this election. It must be decided, or expire, before a new one can be made."
+    );
+  }
   if (existing) {
     const tally = await approvalsRepository.getTally(existing.id);
     return toApprovalRequestDto(existing, tally);
@@ -72,6 +85,14 @@ export async function requestApproval(params: {
       approvalRequestId: request.id, actionType: params.actionType, requiredApprovals: params.requiredApprovals,
     },
   });
+
+  // Fire-and-forget: the request exists whether or not the notices go out.
+  notifyApprovers(params.requestedById, {
+    type: "APPROVAL_REQUESTED",
+    title: "Approval needed",
+    message: `${params.summary ?? params.actionType.toLowerCase().replace(/_/g, " ")}: ${params.requiredApprovals} approval${params.requiredApprovals === 1 ? "" : "s"} needed.`,
+    electionId: params.electionId,
+  }).catch(() => {});
 
   return toApprovalRequestDto(request, { approveCount: 0, rejectCount: 0 });
 }

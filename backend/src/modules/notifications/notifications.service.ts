@@ -48,6 +48,20 @@ export async function notifyRole(
   );
 }
 
+// Everyone who can decide approval requests (officers and administrators),
+// except the person who made the request: they cannot approve their own.
+export async function notifyApprovers(
+  excludeUserId: string,
+  data: { type: NotificationType; title: string; message: string; electionId?: string }
+): Promise<void> {
+  const [officers, admins] = await Promise.all([
+    notificationsRepository.findActiveUserIdsByRole("ELECTION_OFFICER"),
+    notificationsRepository.findActiveUserIdsByRole("ELECTION_ADMINISTRATOR"),
+  ]);
+  const ids = [...officers, ...admins].map((u) => u.id).filter((id) => id !== excludeUserId);
+  await notify(ids, data);
+}
+
 export async function listForUser(
   userId: string,
   query: ListNotificationsQuery,
