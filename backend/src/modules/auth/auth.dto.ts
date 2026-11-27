@@ -12,6 +12,8 @@ export interface SafeUserDto {
   status: UserStatus;
   mfaEnabled: boolean;
   membershipNumber: string | null;
+  // Staff without two-factor must set it up before anything else.
+  mfaSetupRequired: boolean;
 }
 
 export interface AuthenticatedSessionDto {

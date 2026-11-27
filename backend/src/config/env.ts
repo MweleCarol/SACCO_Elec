@@ -42,6 +42,15 @@ const envSchema = z.object({
     .enum(["true", "false"])
     .default("true")
     .transform((v) => v === "true"),
+  // DEVELOPMENT ONLY. "true" skips the two-factor code at login for every
+  // account and stops forcing staff to set it up, so you can sign in quickly
+  // while building. Ignored in tests; the server refuses to start with it in
+  // production.
+  DEV_SKIP_MFA: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
+
   SCHEDULER_INTERVAL_MS: z.coerce.number().int().min(5_000).default(60_000),
 
   // Time zone used by the governance off-hours rule (IANA name).
@@ -68,6 +77,11 @@ function loadEnv(): Env {
     for (const issue of parsed.error.issues) {
       console.error(`   - ${issue.path.join(".")}: ${issue.message}`);
     }
+    process.exit(1);
+  }
+
+  if (parsed.data.DEV_SKIP_MFA && parsed.data.NODE_ENV === "production") {
+    console.error("DEV_SKIP_MFA=true is not allowed in production. Remove it from the environment.");
     process.exit(1);
   }
 

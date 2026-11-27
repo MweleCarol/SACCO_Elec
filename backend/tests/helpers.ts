@@ -35,7 +35,10 @@ export async function createUser(
       role,
       status: overrides.status ?? "ACTIVE",
       fullName: overrides.fullName ?? `Test ${role} ${id}`,
-      mfaEnabled: overrides.mfaEnabled ?? false,
+      // Staff must have two-factor on to use staff routes, so staff test users
+      // have it on unless a test says otherwise. (No secret: tests sign tokens
+      // directly with bearer() and never type a code.)
+      mfaEnabled: overrides.mfaEnabled ?? role !== "MEMBER",
       totpSecret: overrides.totpSecret ?? null,
       ...(role === "MEMBER"
         ? {

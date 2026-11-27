@@ -102,7 +102,7 @@ describe("turning two-factor off", () => {
 
   it("staff cannot turn it off", async () => {
     for (const role of ["ELECTION_OFFICER", "AUDITOR"] as const) {
-      const u = (await createUser(role)) as U;
+      const u = (await createUser(role, { mfaEnabled: false })) as U;
       const { secret } = await enableMfa(u);
       const res = await api().post("/api/v1/auth/mfa/disable").set(bearer(u)).send({ password: TEST_PASSWORD, totpCode: authenticator.generate(secret) });
       expect(res.status).toBe(403);

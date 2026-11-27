@@ -8,6 +8,7 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "test": "jest",
+    "db:migrate:test": "node -e \"require('dotenv').config(); process.env.DATABASE_URL=process.env.DATABASE_TEST_URL; require('child_process').execSync('npx prisma migrate deploy',{stdio:'inherit',env:process.env})\"",
     "prisma:migrate": "prisma migrate dev",
     "prisma:generate": "prisma generate",
     "prisma:seed": "tsx prisma/seed.ts"

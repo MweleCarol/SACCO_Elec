@@ -3,6 +3,7 @@ import { env } from "./config/env";
 import { logger } from "./config/logger";
 import { prisma, disconnectPrisma } from "./config/prisma";
 import { startScheduler } from "./jobs/scheduler";
+import { devSkipMfa } from "./shared/utils/mfaPolicy";
 
 async function main(): Promise<void> {
   // Fail fast on startup if the DB is unreachable, rather than starting
@@ -14,6 +15,9 @@ async function main(): Promise<void> {
 
   const server = app.listen(env.PORT, () => {
     logger.info(`SEVS backend listening on port ${env.PORT}`, { env: env.NODE_ENV });
+    if (devSkipMfa) {
+      logger.warn("DEV_SKIP_MFA is on: two-factor codes are NOT asked at login. Development only.");
+    }
   });
 
   const stopScheduler = env.SCHEDULER_ENABLED

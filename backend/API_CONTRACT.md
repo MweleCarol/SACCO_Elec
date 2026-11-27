@@ -93,7 +93,9 @@ Only one refresh should run at a time: queue other requests that get a 401 until
 `{ phoneNumber: string|null, branch: string|null, membershipStatus: "ACTIVE"|"INACTIVE"|"SUSPENDED"|"EXITED"|null, memberSince: ISO date, backupCodesRemaining: number|null (null when MFA is off), mfaRequired: boolean (true for staff) }`.
 
 **Two-factor sign-in**
-* Optional for members; required for officers, administrators and auditors (`mfaRequired: true`). Staff cannot turn it off. Forcing staff to set it up at login comes in the next stage.
+* Optional for members; required for officers, administrators and auditors (`mfaRequired: true`). Staff cannot turn it off.
+* `User.mfaSetupRequired` (in the login response and `GET /users/me`) is `true` for a staff account without two-factor. Such an account can sign in, but every request outside `/auth/*` and `GET /users/me` gets **403** "Set up two-factor sign-in before using staff features." The frontend sends it to `/setup-2fa`.
+* `DEV_SKIP_MFA=true` (development only) skips the code at login and turns off the staff requirement. Ignored in tests; the server refuses to start with it in production. Such logins are audited with `mfaSkipped: "DEV_SKIP_MFA"`.
 * 8 backup codes per user, each usable once. Only a keyed hash (HMAC-SHA256) is stored; the plain codes cannot be fetched again.
 * Audit actions: `MFA_ENABLED`, `MFA_BACKUP_CODE_USED { remaining }`, `MFA_BACKUP_CODES_REGENERATED`, `MFA_DISABLED`, `MFA_DISABLE_FAILED`, `MFA_VERIFICATION_FAILED { reason }`. `LOGIN_SUCCESS` carries `backupCode: true` when a backup code was used.
 

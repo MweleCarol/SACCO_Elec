@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { AppError } from "../errors/AppError";
 import { sendError } from "../responses/ApiResponse";
 import { logger } from "../../config/logger";
+import { isProduction } from "../../config/env";
 
 // Handles Postgres/Prisma errors that are really business-rule violations
 // in disguise (e.g. a unique constraint) rather than genuine server bugs —
@@ -26,6 +27,16 @@ function handlePrismaError(err: Prisma.PrismaClientKnownRequestError): {
       return { statusCode: 404, message: "Record not found." };
     case "P2003":
       return { statusCode: 409, message: "This action conflicts with related data." };
+    // Table or column missing: the database is behind the code. Say so plainly
+    // outside production, where the fix is to apply the migrations.
+    case "P2021":
+    case "P2022":
+      return {
+        statusCode: 500,
+        message: isProduction
+          ? "A database error occurred."
+          : "The database is missing a migration. Run `npx prisma migrate deploy`, then restart the server.",
+      };
     default:
       return { statusCode: 500, message: "A database error occurred." };
   }

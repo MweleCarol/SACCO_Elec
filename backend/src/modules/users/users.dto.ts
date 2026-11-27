@@ -1,5 +1,6 @@
 import { User } from "@prisma/client";
 import { SafeUserDto } from "../auth/auth.dto";
+import { mfaSetupRequired } from "../../shared/utils/mfaPolicy";
 
 // Reuses the same "safe" shape auth.dto.ts already defines — one
 // definition of "what a User looks like to a client" for the whole
@@ -13,6 +14,7 @@ export function toSafeUserDto(user: User): SafeUserDto {
     status: user.status,
     mfaEnabled: user.mfaEnabled,
     membershipNumber: user.membershipNumber,
+    mfaSetupRequired: mfaSetupRequired(user),
   };
 }
 

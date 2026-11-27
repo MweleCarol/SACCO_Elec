@@ -21,6 +21,7 @@ import {
   countRecentFailedAuthAttempts,
 } from "../audit/audit.service";
 import * as authRepository from "./auth.repository";
+import { devSkipMfa, isStaffRole, mfaSetupRequired } from "../../shared/utils/mfaPolicy";
 import {
   RegisterInput,
   LoginInput,
@@ -37,9 +38,7 @@ import {
   ProfileDto,
 } from "./auth.dto";
 
-// Two-factor is compulsory for these roles (enforced in stage 2); they can
-// never turn it off.
-const STAFF_ROLES = ["ELECTION_OFFICER", "ELECTION_ADMINISTRATOR", "AUDITOR"];
+
 
 // ---------- Backup codes ----------
 // 8 codes of 8 characters, shown as "ABCD-EFGH". The alphabet leaves out
@@ -89,6 +88,7 @@ function toSafeUser(user: User): SafeUserDto {
     status: user.status,
     mfaEnabled: user.mfaEnabled,
     membershipNumber: user.membershipNumber,
+    mfaSetupRequired: mfaSetupRequired(user),
   };
 }
 
@@ -222,12 +222,8 @@ export async function login(
     throw new AuthError(INVALID_CREDENTIALS_MESSAGE);
   }
 
-  if (user.mfaEnabled) {
-    await writeAuditLog({
-      actorId: user.id,
-      action: "LOGIN_MFA_CHALLENGE_ISSUED",
-      outcome: "SUCCESS",
-    });
+   if (user.mfaEnabled && !devSkipMfa) {
+    await writeAuditLog({ actorId: user.id, action: "LOGIN_MFA_CHALLENGE_ISSUED", outcome: "SUCCESS" });
     return {
       result: {
         mfaRequired: true,
@@ -238,12 +234,12 @@ export async function login(
 
   const { session, rawRefreshToken } = await issueSession(user, ip);
   await writeAuditLog({
-    actorId: user.id,
-    action: "LOGIN_SUCCESS",
-    outcome: "SUCCESS",
+    actorId: user.id, action: "LOGIN_SUCCESS", outcome: "SUCCESS",
+    // Recorded so a development shortcut can never pass unnoticed in the audit trail.
+    ...(user.mfaEnabled && devSkipMfa ? { metadata: { mfaSkipped: "DEV_SKIP_MFA" } } : {}),
   });
 
-  return { result: session, rawRefreshToken };
+    return { result: session, rawRefreshToken };
 }
 
 export async function verifyMfa(
@@ -550,8 +546,10 @@ export async function confirmMfaEnrollment(
     ]);
   }
 
-  await authRepository.confirmMfa(userId);
+  // Codes first: if saving them fails, two-factor stays off instead of being
+  // left on with no backup codes.
   const backupCodes = await issueBackupCodes(userId);
+  await authRepository.confirmMfa(userId);
   await writeAuditLog({
     actorId: userId,
     action: "MFA_ENABLED",
@@ -611,7 +609,7 @@ export async function disableMfa(
 ): Promise<void> {
   const user = await authRepository.findUserById(userId);
   if (!user) throw new AuthError("User not found.");
-  if (STAFF_ROLES.includes(user.role)) {
+  if (isStaffRole(user.role)) {
     throw new ForbiddenError(
       "Two-factor sign-in is required for your role and cannot be turned off.",
     );
@@ -649,7 +647,7 @@ export async function getProfile(userId: string): Promise<ProfileDto> {
     backupCodesRemaining: user.mfaEnabled
       ? await authRepository.countUnusedBackupCodes(userId)
       : null,
-    mfaRequired: STAFF_ROLES.includes(user.role),
+     mfaRequired: isStaffRole(user.role),
   };
 }
 

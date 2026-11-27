@@ -69,7 +69,7 @@ describe("sync-bound registration", () => {
 
 describe("login, refresh, logout", () => {
   it("logs in, sets an httpOnly refresh cookie scoped to /api/v1/auth, and never returns secrets", async () => {
-    const u = await createUser("ELECTION_OFFICER");
+    const u = await createUser("ELECTION_OFFICER", { mfaEnabled: false });
     const res = await login(u.email);
     expect(res.status).toBe(200);
     expect(res.body.data.accessToken).toEqual(expect.any(String));
@@ -165,7 +165,7 @@ describe("MFA", () => {
   }
 
   it("stores the TOTP secret encrypted, not as plain base32", async () => {
-    const u = await createUser("ELECTION_OFFICER");
+    const u = await createUser("ELECTION_OFFICER", { mfaEnabled: false });
     const secret = await enableMfaViaApi(u as never);
     const row = await prisma.user.findUniqueOrThrow({ where: { id: u.id } });
     expect(row.mfaEnabled).toBe(true);
@@ -174,7 +174,7 @@ describe("MFA", () => {
   });
 
   it("requires the second step, rejects a replayed code, and refuses re-enrolment", async () => {
-    const u = await createUser("ELECTION_OFFICER");
+    const u = await createUser("ELECTION_OFFICER", { mfaEnabled: false });
     const secret = await enableMfaViaApi(u as never);
 
     const step1 = await login(u.email);
@@ -196,7 +196,7 @@ describe("MFA", () => {
 
   // Regression: the challenge token used to work as a full access token.
   it("the MFA challenge token cannot be used as an access token", async () => {
-    const u = await createUser("ELECTION_OFFICER");
+    const u = await createUser("ELECTION_OFFICER", { mfaEnabled: false });
     await enableMfaViaApi(u as never);
     const challenge = (await login(u.email)).body.data.mfaChallengeToken;
 
@@ -210,7 +210,7 @@ describe("MFA", () => {
   });
 
   it("an access token cannot be used as an MFA challenge token", async () => {
-    const u = await createUser("ELECTION_OFFICER");
+    const u = await createUser("ELECTION_OFFICER", { mfaEnabled: false });
     const secret = await enableMfaViaApi(u as never);
     const accessToken = bearer(u).Authorization.slice(7);
     const res = await api().post("/api/v1/auth/verify-mfa").send({ mfaChallengeToken: accessToken, totpCode: authenticator.generate(secret) });
