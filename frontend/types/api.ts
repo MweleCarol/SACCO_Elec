@@ -250,11 +250,11 @@ export interface AIInsight {
   eventType: string;
   resourceType: string | null;
   resourceId: string | null;
-  riskLevel: RiskLevel;
+  riskLevel: RiskLevel | null;
   recommendation: string;
   reasoning: string;
   evidence: Record<string, unknown> | null;
-  confidence: number;
+  confidence: number | null;
   acknowledgedBy: string | null;
   acknowledgedAt: string | null;
   createdAt: string;
@@ -312,4 +312,13 @@ export interface Profile extends User {
   memberSince: string;
   backupCodesRemaining: number | null; // null when two-factor is off
   mfaRequired: boolean; // staff cannot turn it off
+}
+
+
+// ---------- AI assistants (POST /governance/copilot/query, /governance/assistant/query) ----------
+
+// A previous turn sent back with a follow-up question (at most 6).
+export interface ChatTurn {
+  role: "user" | "assistant";
+  text: string;
 }

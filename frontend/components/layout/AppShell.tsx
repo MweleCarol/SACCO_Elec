@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { RoleSidebar } from "@/components/layout/RoleSidebar";
 import { MobileBottomNav, hidesBottomNav } from "@/components/layout/MobileBottomNav";
+import { MemberHelpAssistant } from "@/components/ai/MemberHelpAssistant";
 
 const PUBLIC_PATHS = ["/", "/login", "/register"];
 // Staff without two-factor see only this page (the backend blocks the rest).
@@ -78,6 +79,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         {children}
       </div>
       <MobileBottomNav role={user.role} />
+      {user.role === "MEMBER" && <MemberHelpAssistant />}
     </div>
   );
 }
