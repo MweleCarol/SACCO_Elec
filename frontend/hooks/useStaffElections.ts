@@ -107,8 +107,17 @@ export function useElectionActions(electionId: string) {
       ) => electionsService.updateElection(electionId, input),
       ...opts,
     }),
-    requestActivation: useMutation({
-      mutationFn: () => electionsService.requestActivation(electionId),
+    requestActivation: useMutation({ mutationFn: () => electionsService.requestActivation(electionId), ...opts }),
+    requestReschedule: useMutation({
+      mutationFn: (dates: { startDate: string; endDate: string }) => electionsService.requestReschedule(electionId, dates),
+      ...opts,
+    }),
+    requestCancellation: useMutation({
+      mutationFn: (reason: string) => electionsService.requestCancellation(electionId, reason),
+      ...opts,
+    }),
+    withdrawCandidate: useMutation({
+      mutationFn: (v: { candidateId: string; reason: string }) => electionsService.withdrawCandidate(v.candidateId, v.reason),
       ...opts,
     }),
     decideRequest: useMutation({

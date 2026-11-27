@@ -111,6 +111,9 @@ export interface Election {
   closedAt: string | null;
   resultsPublishedAt: string | null;
   archivedAt: string | null;
+  // Set when the election was cancelled (rather than finished); the reason is shown to members.
+  cancelledAt: string | null;
+  cancellationReason: string | null;
 }
 
 export interface Position {
@@ -175,7 +178,7 @@ export interface Participation {
 
 export type ApprovalPayload =
   | { reason: string } // cancellation
-  | { startDate: string; endDate: string } // reschedule
+  | { startDate: string; endDate: string; previousStartDate?: string; previousEndDate?: string } // reschedule
   | null;
 
 export interface ApprovalRequest {

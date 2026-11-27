@@ -19,7 +19,7 @@ export function memberPhase(e: Election, now: Date = new Date()): MemberPhase {
     case "RESULTS_PUBLISHED":
       return "RESULTS";
     case "ARCHIVED":
-      return e.resultsPublishedAt ? "RESULTS" : "CANCELLED";
+      return e.cancelledAt || !e.resultsPublishedAt ? "CANCELLED" : "RESULTS";
     default:
       return "UPCOMING"; // APPROVED / SCHEDULED: announced, not yet open
   }

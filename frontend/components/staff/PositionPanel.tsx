@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Trash2, X } from "lucide-react";
+import { Check, Trash2, UserMinus, X } from "lucide-react";
 import type { Candidate, CandidateStatus, Position } from "@/types/api";
 import { useElectionActions } from "@/hooks/useStaffElections";
 import { getApiErrorMessage } from "@/services/api/errors";
@@ -44,6 +44,8 @@ export function PositionPanel({
 }: Props) {
   const actions = useElectionActions(electionId);
   const [rejecting, setRejecting] = useState<Candidate | null>(null);
+  const [withdrawing, setWithdrawing] = useState<Candidate | null>(null);
+  const approvedCount = candidates.filter((c) => c.status === "APPROVED").length;
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -159,6 +161,17 @@ export function PositionPanel({
                   </button>
                 </div>
               )}
+              {canManageCandidates && c.status === "APPROVED" && (
+                <div className="mt-2 pl-14">
+                  <button
+                    onClick={() => setWithdrawing(c)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--sevs-border)] px-3 py-1.5 text-sm font-bold text-[var(--sevs-text-body)] hover:border-red-200 hover:bg-red-50 hover:text-red-700"
+                  >
+                    <UserMinus className="h-4 w-4" aria-hidden="true" />
+                    Withdraw<span className="sr-only"> {c.displayName}</span>
+                  </button>
+                </div>
+              )}
             </li>
           ))}
         </ul>
@@ -192,6 +205,37 @@ export function PositionPanel({
             });
             onDone(`${rejecting.displayName} rejected.`);
             setRejecting(null);
+          }}
+        />
+      )}
+            {withdrawing && (
+        <ReasonDialog
+          title={`Withdraw ${withdrawing.displayName}?`}
+          message={
+            approvedCount === 1
+              ? `${withdrawing.displayName} is the only approved candidate for ${p.name}. Voting cannot open until another candidate is approved for this position.`
+              : `${withdrawing.displayName} will be removed from the ballot for ${p.name}. This cannot be undone.`
+          }
+          label="Reason"
+          hint={withdrawing.memberId ? "The member is notified and sees this reason." : "Recorded in the audit log."}
+          required
+          minLength={10}
+          tone="danger"
+          confirmLabel="Withdraw"
+          isLoading={actions.withdrawCandidate.isPending}
+          error={actions.withdrawCandidate.isError ? getApiErrorMessage(actions.withdrawCandidate.error) : null}
+          onCancel={() => {
+            actions.withdrawCandidate.reset();
+            setWithdrawing(null);
+          }}
+          onConfirm={async (reason) => {
+            try {
+              await actions.withdrawCandidate.mutateAsync({ candidateId: withdrawing.id, reason });
+              onDone(`${withdrawing.displayName} withdrawn from ${p.name}.`);
+              setWithdrawing(null);
+            } catch {
+              // shown in the dialog
+            }
           }}
         />
       )}

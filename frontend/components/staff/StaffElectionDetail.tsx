@@ -3,7 +3,7 @@
 import { useId, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { CheckCircle2, Plus, Pencil } from "lucide-react";
+import { Ban, CheckCircle2, Pencil, Plus } from "lucide-react";
 import type { Position, UserRole } from "@/types/api";
 import { useElection } from "@/hooks/useElections";
 import { useCandidates, usePositions } from "@/hooks/useCandidacy";
@@ -26,6 +26,7 @@ import { PositionPanel } from "@/components/staff/PositionPanel";
 import { ActivationPanel } from "@/components/staff/ActivationPanel";
 import { PendingRequestCard } from "@/components/staff/PendingRequestCard";
 import { EditElectionDetails } from "@/components/staff/EditElectionDetails";
+import { ElectionManageActions } from "@/components/staff/ElectionManageActions";
 
 // Candidates can be added and reviewed until voting starts (backend rule).
 const CANDIDATE_EDITABLE = [
@@ -132,6 +133,20 @@ export function StaffElectionDetail({
           />
         )}
 
+        {e.cancelledAt && (
+          <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-900">
+            <Ban className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+            <div>
+              <p className="font-bold">
+                This election was cancelled on {formatDateTime(e.cancelledAt)}.
+              </p>
+              {e.cancellationReason && (
+                <p className="mt-1">Reason: {e.cancellationReason}</p>
+              )}
+            </div>
+          </div>
+        )}
+
         <section
           aria-labelledby="overview"
           className="rounded-2xl border border-[var(--sevs-border)] bg-white p-5 shadow-sm"
@@ -193,24 +208,6 @@ export function StaffElectionDetail({
               </div>
             </dl>
           )}
-          <div>
-            <dt className="text-[var(--sevs-text-muted)]">Voting opens</dt>
-            <dd className="font-medium">{formatDateTime(e.startDate)}</dd>
-          </div>
-          <div>
-            <dt className="text-[var(--sevs-text-muted)]">Voting closes</dt>
-            <dd className="font-medium">{formatDateTime(e.endDate)}</dd>
-          </div>
-          <div>
-            <dt className="text-[var(--sevs-text-muted)]">
-              Approvals needed for key actions
-            </dt>
-            <dd className="font-medium">{e.requiredApprovals}</dd>
-          </div>
-          <div>
-            <dt className="text-[var(--sevs-text-muted)]">Created</dt>
-            <dd className="font-medium">{formatDateTime(e.createdAt)}</dd>
-          </div>
 
           <p className="mt-4 rounded-lg bg-[var(--sevs-bg)] px-3 py-2 text-sm text-[var(--sevs-text-body)]">
             <span className="font-bold">Next: </span>
@@ -239,7 +236,13 @@ export function StaffElectionDetail({
               userId={userId}
               onDone={setNotice}
             />
-          ))}``
+          ))}
+          <ElectionManageActions
+            election={e}
+            role={role}
+            pending={requests}
+            onDone={setNotice}
+          />
         </section>
 
         <section aria-labelledby="positions-heading">

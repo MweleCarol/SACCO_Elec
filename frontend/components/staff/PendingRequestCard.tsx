@@ -97,18 +97,26 @@ export function PendingRequestCard({
           style={{ width: `${(r.approveCount / r.requiredApprovals) * 100}%` }}
         />
       </div>
-
       {r.payload && "startDate" in r.payload && (
-        <p className="mt-2 text-sm text-amber-950">
-          New dates: {formatDateTime(r.payload.startDate)} –{" "}
-          {formatDateTime(r.payload.endDate)}
-        </p>
+        <dl className="mt-2 grid gap-1 text-sm text-amber-950 sm:grid-cols-[auto_1fr] sm:gap-x-3">
+          {r.payload.previousStartDate && (
+            <>
+              <dt className="font-semibold">Now</dt>
+              <dd>
+                <s>{formatDateTime(r.payload.previousStartDate)} – {formatDateTime(r.payload.previousEndDate!)}</s>
+              </dd>
+            </>
+          )}
+          <dt className="font-semibold">New dates</dt>
+          <dd>{formatDateTime(r.payload.startDate)} – {formatDateTime(r.payload.endDate)}</dd>
+        </dl>
       )}
       {r.payload && "reason" in r.payload && (
         <p className="mt-2 text-sm text-amber-950">
-          Reason: {r.payload.reason}
+          <span className="font-semibold">Reason:</span> {r.payload.reason}
         </p>
       )}
+      
 
       <p className="mt-2 text-sm text-amber-950">
         {decided

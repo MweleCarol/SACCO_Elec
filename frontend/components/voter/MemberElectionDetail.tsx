@@ -100,6 +100,12 @@ export function MemberElectionDetail({ id }: { id: string }) {
             <ElectionStatusBadge election={e} />
           </div>
 
+          {phase === "CANCELLED" && (
+            <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-900">
+              <span className="font-bold">This election was cancelled.</span>
+              {e.cancellationReason && <> Reason: {e.cancellationReason}</>}
+            </p>
+          )}
           {phase === "OPEN" && participation.data?.hasVoted && (
             <p className="mt-4 rounded-lg bg-green-50 px-3 py-2 text-sm font-medium text-green-800">
               You have voted in this election.

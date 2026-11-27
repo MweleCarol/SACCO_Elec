@@ -51,7 +51,7 @@ export function staffStage(e: Election, now: Date = new Date()): StaffStage {
     case "RESULTS_PUBLISHED":
       return "PUBLISHED";
     case "ARCHIVED":
-      return e.resultsPublishedAt ? "ARCHIVED" : "CANCELLED";
+      return e.cancelledAt || !e.resultsPublishedAt ? "CANCELLED" : "ARCHIVED";
   }
 }
 
@@ -127,7 +127,9 @@ export function nextStep(
     case "PUBLISHED":
       return "Results are published and visible to members.";
     case "CANCELLED":
-      return "This election was cancelled.";
+      return e.cancelledAt
+        ? `Cancelled on ${formatDateTime(e.cancelledAt)}. Reason: ${e.cancellationReason ?? "not recorded"}`
+        : "This election was cancelled.";
     case "ARCHIVED":
       return "Archived.";
   }

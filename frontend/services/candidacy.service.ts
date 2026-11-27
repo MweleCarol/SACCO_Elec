@@ -19,12 +19,8 @@ export async function nominateSelf(
   return res.data.data;
 }
 
-export async function withdrawCandidacy(
-  candidateId: string,
-): Promise<Candidate> {
-  const res = await api.post<ApiSuccess<Candidate>>(
-    `/candidates/${candidateId}/withdraw`,
-    {},
-  );
+// The member's own nomination. The reason is optional; officers see it.
+export async function withdrawCandidacy(v: { candidateId: string; reason?: string }): Promise<Candidate> {
+  const res = await api.post<ApiSuccess<Candidate>>(`/candidates/${v.candidateId}/withdraw`, v.reason ? { reason: v.reason } : {});
   return res.data.data;
 }

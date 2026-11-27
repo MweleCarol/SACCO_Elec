@@ -8,6 +8,8 @@ interface ReasonDialogProps {
   label: string; // e.g. "Reason"
   hint?: string; // who will see the text
   required?: boolean;
+  // With required: the shortest acceptable text (e.g. 10 for reasons members see).
+  minLength?: number;
   confirmLabel: string;
   tone?: "danger" | "default";
   isLoading?: boolean;
@@ -21,7 +23,7 @@ interface ReasonDialogProps {
 // announced as a dialog, focus starts in the text box and stays inside,
 // Escape cancels, and focus returns to the button that opened it.
 export function ReasonDialog({
-  title, message, label, hint, required = false, confirmLabel, tone = "default",
+  title, message, label, hint, required = false, minLength = 1, confirmLabel, tone = "default",
   isLoading = false, error, onConfirm, onCancel,
 }: ReasonDialogProps) {
   const ids = { title: useId(), message: useId(), field: useId(), hint: useId(), err: useId() };
@@ -60,7 +62,7 @@ export function ReasonDialog({
   }, [onCancel, isLoading]);
 
   function confirm() {
-    if (required && text.trim().length === 0) {
+    if (required && text.trim().length < minLength) {
       setMissing(true);
       fieldRef.current?.focus();
       return;
@@ -102,7 +104,11 @@ export function ReasonDialog({
           aria-describedby={describedBy}
           className="mt-1 w-full rounded-lg border border-[var(--sevs-border)] px-3 py-2 text-sm focus:border-[var(--sevs-navy)] focus:outline-none focus:ring-2 focus:ring-[var(--sevs-navy)]/20 aria-[invalid=true]:border-red-500"
         />
-        {missing && <p id={ids.err} role="alert" className="mt-1 text-xs text-red-700">Please give a reason.</p>}
+        {missing && (
+          <p id={ids.err} role="alert" className="mt-1 text-xs text-red-700">
+            {minLength > 1 ? `Please write at least ${minLength} characters.` : "Please give a reason."}
+          </p>
+        )}
         {error && <p role="alert" className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
 
         <div className="mt-5 flex gap-3">

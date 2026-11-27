@@ -11,7 +11,7 @@ import { useMyCandidacies, useWithdrawCandidacy } from "@/hooks/useCandidacy";
 import { formatDateTime, nominationsOpen } from "@/lib/electionStatus";
 import { getApiErrorMessage } from "@/services/api/errors";
 import { Topbar } from "@/components/layout/Topbar";
-import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { ReasonDialog } from "@/components/ui/ReasonDialog";
 import {
   EmptyState,
   ErrorPanel,
@@ -40,7 +40,7 @@ const STATUS: Record<
   WITHDRAWN: {
     label: "Withdrawn",
     tone: "bg-gray-100 text-gray-700 ring-gray-500/20",
-    next: "You withdrew this nomination.",
+    next: "This nomination was withdrawn. If an election officer withdrew it, their reason is in your notifications.",
   },
 };
 
@@ -59,10 +59,10 @@ function MyCandidacyInner() {
     (e) => nominationsOpen(e) && !active.some((c) => c.electionId === e.id),
   );
 
-  async function confirmWithdraw() {
+  async function confirmWithdraw(reason: string) {
     if (!toWithdraw) return;
     try {
-      await withdraw.mutateAsync(toWithdraw.id);
+      await withdraw.mutateAsync({ candidateId: toWithdraw.id, reason: reason || undefined });
       setToWithdraw(null);
     } catch {
       setToWithdraw(null); // the error is shown on the page
@@ -209,13 +209,15 @@ function MyCandidacyInner() {
       </div>
 
       {toWithdraw && (
-        <ConfirmDialog
+        <ReasonDialog
           title="Withdraw your nomination?"
           message={`You will no longer stand for ${toWithdraw.position.name} in ${toWithdraw.election.name}. You can nominate yourself again while nominations are open.`}
+          label="Reason"
+          hint="Election officers will see this."
           confirmLabel="Withdraw"
           tone="danger"
           isLoading={withdraw.isPending}
-          onConfirm={confirmWithdraw}
+          onConfirm={(reason) => void confirmWithdraw(reason)}
           onCancel={() => setToWithdraw(null)}
         />
       )}

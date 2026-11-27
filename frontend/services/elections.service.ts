@@ -93,3 +93,22 @@ export async function requestActivation(electionId: string): Promise<ApprovalReq
   const res = await api.post<ApiSuccess<ApprovalRequest>>(`/elections/${electionId}/activate`, {});
   return res.data.data;
 }
+
+// Asks for new voting dates. Needs approval from other officers or
+// administrators; members are told the new dates once it is approved.
+export async function requestReschedule(electionId: string, dates: { startDate: string; endDate: string }): Promise<ApprovalRequest> {
+  const res = await api.post<ApiSuccess<ApprovalRequest>>(`/elections/${electionId}/reschedule`, dates);
+  return res.data.data;
+}
+
+// Administrators only. Needs approval; members see the reason.
+export async function requestCancellation(electionId: string, reason: string): Promise<ApprovalRequest> {
+  const res = await api.post<ApiSuccess<ApprovalRequest>>(`/elections/${electionId}/cancel`, { reason });
+  return res.data.data;
+}
+
+// Officers: a reason of at least 10 characters is required; the member sees it.
+export async function withdrawCandidate(candidateId: string, reason: string): Promise<Candidate> {
+  const res = await api.post<ApiSuccess<Candidate>>(`/candidates/${candidateId}/withdraw`, { reason });
+  return res.data.data;
+}
