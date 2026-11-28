@@ -310,12 +310,17 @@ On both routes the `decision` field in the body decides the outcome, not the URL
 ### Approval requests (DAT)
 | Method & path | Roles | Request | `data` |
 |---|---|---|---|
-| `GET /approval-requests` | O, A, Au | `?status=&actionType=&page=&pageSize=` | `{ requests: ApprovalRequest[], pagination }` |
-| `GET /approval-requests/:id` | O, A, Au | — | `ApprovalRequest` |
-| `POST /approval-requests/:id/decide` | O, A | `{ decision: "APPROVE" \| "REJECT", comment? }` | `ApprovalRequest`. Status becomes `EXECUTED` once enough approvals arrive, or `REJECTED` on the first rejection. |
+| `GET /approval-requests` | O, A, Au | `?status=&actionType=&open=&page=&pageSize=`. `open=true`: still waiting, soonest-expiring first; `open=false`: decided or expired, newest first. | `{ requests: ApprovalRequest[], pagination }`, each with `election`, `requestedBy` and `decisions` (below) |
+| `GET /approval-requests/:id` | O, A, Au | — | `ApprovalRequest` with `election`, `requestedBy`, `decisions` |
+| `POST /approval-requests/:id/decide` | O, A | `{ decision: "APPROVE" \| "REJECT", comment? }`. **A rejection needs a comment of 10+ characters** (422 on `comment`); the requester is told it. | `ApprovalRequest`. Status becomes `EXECUTED` once enough approvals arrive, or `REJECTED` on the first rejection. |
 
 Errors: 403 on your own request; 409 if you already decided, it's already resolved, or it has expired.
 Show progress as e.g. **"1 of 2 approvals"** using `approveCount` / `requiredApprovals`.
+
+On the list and single views each request also has:
+`election: { id, name, status } | null`, `requestedBy: { id, fullName, role }`,
+`decisions: [{ approverId, approverName, approverRole, decision, comment, decidedAt }]` (oldest first).
+When a request is carried out or rejected, the requester gets `APPROVAL_DECIDED` naming the election and, for a rejection, who rejected it and why.
 
 Every new approval request notifies the officers and administrators who can decide it (not the requester), type `APPROVAL_REQUESTED`.
 

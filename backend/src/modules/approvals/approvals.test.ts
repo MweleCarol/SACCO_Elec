@@ -31,10 +31,9 @@ async function setup(
 }
 
 const decide = (user: Actor, id: string, decision: "APPROVE" | "REJECT") =>
-  api()
-    .post(`/api/v1/approval-requests/${id}/decide`)
-    .set(bearer(user))
-    .send({ decision });
+  api().post(`/api/v1/approval-requests/${id}/decide`).set(bearer(user as never))
+    // A rejection must give a reason (10+ characters).
+    .send(decision === "REJECT" ? { decision, comment: "Not ready yet: see the notes." } : { decision });
 
 async function requestActivation(
   requester: { id: string },
@@ -239,7 +238,7 @@ describe("cancellation and reschedule through DAT", () => {
         startDate: new Date(Date.now() + 864e5),
         endDate: new Date(Date.now() + 2 * 864e5),
       });
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(409);
   });
 });
 

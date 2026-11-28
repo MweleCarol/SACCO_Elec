@@ -6,7 +6,7 @@ import { ConflictError } from "../../shared/errors/ConflictError";
 import { writeAuditLog, writeAuditLogInTransaction } from "../audit/audit.service";
 import { notify, notifyApprovers } from "../notifications/notifications.service";
 import * as approvalsRepository from "./approvals.repository";
-import { toApprovalRequestDto, ApprovalRequestDto } from "./approvals.dto";
+import { toApprovalRequestDto, toApprovalRequestDetailDto, ApprovalRequestDto } from "./approvals.dto";
 import { DecisionInput, ListApprovalRequestsQuery } from "./approvals.schema";
 import { executeActivation, executeCancellation, executeReschedule } from "../elections/elections.service";
 import { executePublish } from "../results/results.service";
@@ -98,19 +98,15 @@ export async function requestApproval(params: {
 }
 
 export async function getById(id: string): Promise<ApprovalRequestDto> {
-  const request = await approvalsRepository.findRequestById(id);
+  const request = await approvalsRepository.findRequestWithDetails(id);
   if (!request) throw new NotFoundError("Approval request");
-  const tally = await approvalsRepository.getTally(id);
-  return toApprovalRequestDto(request, tally);
+  return toApprovalRequestDetailDto(request);
 }
 
 export async function list(query: ListApprovalRequestsQuery) {
   const [requests, totalCount] = await approvalsRepository.listRequests(query);
-  const withTallies = await Promise.all(
-    requests.map(async (r) => toApprovalRequestDto(r, await approvalsRepository.getTally(r.id)))
-  );
   return {
-    requests: withTallies,
+    requests: requests.map(toApprovalRequestDetailDto),
     pagination: { page: query.page, pageSize: query.pageSize, totalCount, totalPages: Math.ceil(totalCount / query.pageSize) },
   };
 }
@@ -205,16 +201,36 @@ async function resolveAndDispatch(
     // Only after commit: nothing goes out for an action that rolled back.
     outcome.afterCommit?.();
 
-    notify([request.requestedById], {
-      type: "APPROVAL_DECIDED",
-      title: finalStatus === "APPROVED" ? "Your request was approved" : "Your request was rejected",
-      message: `Your ${request.actionType.toLowerCase().replace(/_/g, " ")} request has been ${finalStatus.toLowerCase()}.`,
-      electionId: request.electionId ?? undefined,
-    }).catch(() => {});
+    // Tell the requester the outcome, naming the election and, for a
+    // rejection, the reason given.
+    tellRequester(request, finalStatus).catch(() => {});
   }
 
   const updated = await approvalsRepository.findRequestById(request.id);
   return toApprovalRequestDto(updated!, tally);
+}
+
+const ACTION_LABEL: Record<string, string> = {
+  ELECTION_ACTIVATION: "open voting",
+  ELECTION_RESCHEDULE: "change the voting dates",
+  ELECTION_CANCELLATION: "cancel the election",
+  RESULT_PUBLICATION: "publish the results",
+};
+
+async function tellRequester(request: ApprovalRequest, finalStatus: "APPROVED" | "REJECTED"): Promise<void> {
+  const details = await approvalsRepository.findRequestWithDetails(request.id);
+  const what = ACTION_LABEL[request.actionType] ?? request.actionType.toLowerCase().replace(/_/g, " ");
+  const where = details?.election ? ` for "${details.election.name}"` : "";
+  const veto = details?.decisions.find((d) => d.decision === "REJECT");
+  await notify([request.requestedById], {
+    type: "APPROVAL_DECIDED",
+    title: finalStatus === "APPROVED" ? "Your request was approved" : "Your request was rejected",
+    message:
+      finalStatus === "APPROVED"
+        ? `Your request to ${what}${where} got enough approvals and has been carried out.`
+        : `Your request to ${what}${where} was rejected by ${veto?.approver.fullName ?? "an approver"}. Reason: ${veto?.comment ?? "none given"}`,
+    electionId: request.electionId ?? undefined,
+  });
 }
 
 // Called by the scheduler. Marks every expired PENDING request EXPIRED so

@@ -72,17 +72,46 @@ export async function getTally(requestId: string): Promise<{ approveCount: numbe
   };
 }
 
+// What the approvals screens need to show a request without more calls:
+// the election, who asked, and every decision so far with its comment.
+export const REQUEST_DETAILS = {
+  election: { select: { id: true, name: true, status: true } },
+  requestedBy: { select: { id: true, fullName: true, role: true } },
+  decisions: {
+    orderBy: { decidedAt: "asc" },
+    select: {
+      approverId: true, decision: true, comment: true, decidedAt: true,
+      approver: { select: { fullName: true, role: true } },
+    },
+  },
+} satisfies Prisma.ApprovalRequestInclude;
+
+export type ApprovalRequestWithDetails = Prisma.ApprovalRequestGetPayload<{ include: typeof REQUEST_DETAILS }>;
+
+export function findRequestWithDetails(id: string): Promise<ApprovalRequestWithDetails | null> {
+  return prisma.approvalRequest.findUnique({ where: { id }, include: REQUEST_DETAILS });
+}
+
 export function listRequests(filters: {
-  status?: ApprovalStatus; actionType?: ApprovalActionType; page: number; pageSize: number;
+  status?: ApprovalStatus; actionType?: ApprovalActionType; open?: "true" | "false"; page: number; pageSize: number;
 }) {
+  const statusWhere: Prisma.ApprovalRequestWhereInput = filters.status
+    ? { status: filters.status }
+    : filters.open === "true"
+      ? { status: "PENDING" }
+      : filters.open === "false"
+        ? { status: { not: "PENDING" } }
+        : {};
   const where: Prisma.ApprovalRequestWhereInput = {
-    ...(filters.status ? { status: filters.status } : {}),
+    ...statusWhere,
     ...(filters.actionType ? { actionType: filters.actionType } : {}),
   };
+  // Waiting requests: the one that expires soonest first.
+  const orderBy: Prisma.ApprovalRequestOrderByWithRelationInput =
+    filters.open === "true" ? { expiresAt: "asc" } : { createdAt: "desc" };
   return prisma.$transaction([
     prisma.approvalRequest.findMany({
-      where, skip: (filters.page - 1) * filters.pageSize, take: filters.pageSize,
-      orderBy: { createdAt: "desc" },
+      where, skip: (filters.page - 1) * filters.pageSize, take: filters.pageSize, orderBy, include: REQUEST_DETAILS,
     }),
     prisma.approvalRequest.count({ where }),
   ]);
