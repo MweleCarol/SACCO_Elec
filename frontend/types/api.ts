@@ -197,6 +197,19 @@ export interface ApprovalRequest {
   createdAt: string;
   decidedAt: string | null;
   executedAt: string | null;
+  // Included by GET /approval-requests and GET /approval-requests/:id.
+  election?: { id: string; name: string; status: ElectionStatus } | null;
+  requestedBy?: { id: string; fullName: string; role: UserRole };
+  decisions?: ApprovalDecision[];
+}
+
+export interface ApprovalDecision {
+  approverId: string;
+  approverName: string;
+  approverRole: UserRole;
+  decision: "APPROVE" | "REJECT";
+  comment: string | null;
+  decidedAt: string;
 }
 
 // ---------- Results ----------
